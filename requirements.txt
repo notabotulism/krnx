@@ -1,0 +1,18 @@
+# Chillbot Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core
+httpx>=0.25.0
+numpy>=1.24.0
+redis>=5.0.0
+
+# Vector store (optional - only if using embeddings)
+# qdrant-client>=1.7.0
+
+# Server (optional)
+# fastapi>=0.109.0
+# uvicorn>=0.27.0
+# pydantic>=2.0.0
+
+# Embeddings (optional - large download ~2GB)
+# sentence-transformers>=2.2.0

@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Negation words for contradiction detection",
+    "usage": "Events with negation mismatch (one negated, one not) signal contradiction"
+  },
+  "negators": [
+    "not", "n't", "never", "no", "none", "nothing", "neither",
+    "nobody", "nowhere", "cannot", "can't", "won't", "don't",
+    "doesn't", "didn't", "isn't", "aren't", "wasn't", "weren't",
+    "hasn't", "haven't", "hadn't", "wouldn't", "couldn't", "shouldn't",
+    "without", "lack", "lacking", "absent", "missing", "fail", "failed"
+  ]
+}

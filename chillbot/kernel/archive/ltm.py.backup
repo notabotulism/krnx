@@ -1,0 +1,1465 @@
+"""
+KRNX LTM - Long-Term Memory (SQLite)
+
+Dual-tier storage architecture:
+- Warm tier (0-30 days): Fast queries, uncompressed
+- Cold tier (30+ days): Compressed, kept forever
+
+Key guarantees:
+- 100% precision: Never lose event data
+- Temporal replay: Reconstruct any state at any timestamp
+- Efficient storage: ~75% compression on cold tier
+- System recovery: Backup/restore entire kernel state
+
+Architecture:
+    events.db (Warm)        events_archive.db (Cold)
+     events               events_archive (compressed)
+     snapshots            (read-only, append-only)
+    
+    Archival process (auto-runs daily):
+    1. Find events older than 30 days
+    2. Compress (zlib) and move to cold tier
+    3. Delete from warm tier
+    4. Create snapshot (optional, for performance)
+
+Hardening Features (v0.2):
+- Transaction safety for all writes
+- Two-phase commit archival (no data loss)
+- Explicit exception types
+- Archival integrity verification
+"""
+
+import sqlite3
+
+import zlib
+import json
+import time
+import tarfile
+import threading
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+from chillbot.kernel.models import Event
+
+
+# Setup logging
+import logging
+logger = logging.getLogger(__name__)
+
+
+# ==============================================
+# HARDENING: EXCEPTIONS
+# ==============================================
+
+class LTMStorageError(Exception):
+    """Base exception for LTM storage errors"""
+    pass
+
+
+class LTMArchivalError(LTMStorageError):
+    """Archival operation failed"""
+    pass
+
+
+class LTMSnapshotError(LTMStorageError):
+    """Snapshot operation failed"""
+    pass
+
+
+class LTMIntegrityError(LTMStorageError):
+    """Database integrity check failed"""
+    pass
+
+
+# ==============================================
+# HARDENING: TRANSACTION CONTEXT MANAGER
+# ==============================================
+
+class TransactionContext:
+    """
+    Context manager for SQLite transactions with automatic rollback.
+    
+    Usage:
+        with TransactionContext(db, 'archive_events') as txn:
+            txn.execute("INSERT INTO ...")
+            txn.execute("DELETE FROM ...")
+            # Commits on success, rolls back on exception
+    """
+    
+    def __init__(self, db: sqlite3.Connection, operation: str):
+        self.db = db
+        self.operation = operation
+    
+    def __enter__(self):
+        logger.debug(f"[TXN_START] {self.operation}")
+        self.db.execute("BEGIN TRANSACTION")
+        return self.db
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            # Success - commit
+            self.db.commit()
+            logger.debug(f"[TXN_COMMIT] {self.operation}")
+        else:
+            # Error - rollback
+            self.db.rollback()
+            logger.error(
+                f"[TXN_ROLLBACK] {self.operation} failed: {exc_val}"
+            )
+        return False  # Re-raise exception
+
+
+
+class LTM:
+    """
+    Long-Term Memory using SQLite dual-tier storage.
+    
+    Warm tier: Last 30 days, fast queries
+    Cold tier: 30+ days, compressed, kept forever
+    
+    Features:
+    - Generic content storage (no schema opinions)
+    - Auto-archival worker (optional, runs daily)
+    - Auto-snapshot worker (optional, for performance)
+    - Temporal replay to any timestamp
+    """
+    
+    def __init__(
+        self,
+        data_path: str,
+        warm_retention_days: int = 30,
+        compression_level: int = 6,
+        enable_auto_archival: bool = False,
+        archival_interval_hours: int = 24,
+        enable_auto_snapshots: bool = False,
+        snapshot_interval_hours: int = 168  # Weekly
+    ):
+        """
+        Initialize LTM with dual-tier storage.
+        
+        Args:
+            data_path: Directory for database files
+            warm_retention_days: Days to keep in warm tier (default 30)
+            compression_level: zlib compression level 1-9 (default 6)
+            enable_auto_archival: Start background archival worker
+            archival_interval_hours: Hours between archival runs (default 24)
+            enable_auto_snapshots: Start background snapshot worker
+            snapshot_interval_hours: Hours between snapshots (default 168=weekly)
+        """
+        self.data_path = Path(data_path)
+        self.data_path.mkdir(parents=True, exist_ok=True)
+        
+        self.warm_retention_days = warm_retention_days
+        self.compression_level = compression_level
+        
+        # Database paths
+        self.db_path = self.data_path / "events.db"
+        self.archive_db_path = self.data_path / "events_archive.db"
+        
+        # Connections
+        self.db: Optional[sqlite3.Connection] = None
+        self.archive_db: Optional[sqlite3.Connection] = None
+        
+        # Auto-workers
+        self._archival_running = False
+        self._archival_worker_thread: Optional[threading.Thread] = None
+        self._snapshot_running = False
+        self._snapshot_worker_thread: Optional[threading.Thread] = None
+        
+        # Initialize
+        self._connect()
+        self._init_schemas()
+        
+        # Start workers if enabled
+        if enable_auto_archival:
+            self.start_archival_worker(archival_interval_hours)
+        
+        if enable_auto_snapshots:
+            self.start_snapshot_worker(snapshot_interval_hours)
+        
+        print(f"[OK] LTM initialized at {data_path}")
+        print(f"   Warm tier: {self.db_path}")
+        print(f"   Cold tier: {self.archive_db_path}")
+        if enable_auto_archival:
+            print(f"   Auto-archival: Enabled (every {archival_interval_hours}h)")
+        if enable_auto_snapshots:
+            print(f"   Auto-snapshots: Enabled (every {snapshot_interval_hours}h)")
+    
+    # ==============================================
+    # CONNECTION & SCHEMA
+    # ==============================================
+    
+    def _connect(self):
+        """Connect to both warm and cold databases"""
+        # Warm tier (read/write, optimized for concurrent access)
+        self.db = sqlite3.connect(
+            self.db_path,
+            check_same_thread=False,
+            timeout=10.0
+        )
+        self.db.row_factory = sqlite3.Row
+        
+        # Optimize for concurrent writes
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")
+        self.db.execute("PRAGMA cache_size=10000")
+        self.db.execute("PRAGMA temp_store=MEMORY")
+        # PERFORMANCE: Reduce checkpoint frequency (3-5x throughput improvement)
+        self.db.execute("PRAGMA wal_autocheckpoint=5000")  # 20MB before checkpoint (was 4MB)
+        self.db.execute("PRAGMA mmap_size=268435456")      # 256MB memory-mapped I/O
+        
+        # Cold tier (mostly read-only, optimized for compression)
+        self.archive_db = sqlite3.connect(
+            self.archive_db_path,
+            check_same_thread=False,
+            timeout=10.0
+        )
+        self.archive_db.row_factory = sqlite3.Row
+        
+        # Optimize for reads
+        self.archive_db.execute("PRAGMA journal_mode=WAL")
+        self.archive_db.execute("PRAGMA query_only=OFF")  # Allow archival writes
+        self.archive_db.execute("PRAGMA cache_size=5000")
+    
+    def _init_schemas(self):
+        """Initialize database schemas for both tiers"""
+        
+        # === WARM TIER SCHEMA ===
+        self.db.executescript("""
+            -- Events table (warm tier: 0-30 days)
+            CREATE TABLE IF NOT EXISTS events (
+                event_id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                
+                -- Content (generic JSON, uncompressed for fast queries)
+                content TEXT NOT NULL,
+                
+                -- Timing
+                timestamp REAL NOT NULL,
+                created_at REAL NOT NULL,
+                
+                -- Hash-chain provenance (cryptographic integrity)
+                previous_hash TEXT,  -- SHA-256 of previous event in workspace
+                
+                -- Extensible metadata
+                metadata TEXT,  -- JSON
+                
+                -- Indexes for fast queries
+                CHECK (timestamp > 0),
+                CHECK (created_at > 0)
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_events_workspace_time 
+                ON events(workspace_id, timestamp DESC);
+            
+            CREATE INDEX IF NOT EXISTS idx_events_user_time 
+                ON events(user_id, timestamp DESC);
+            
+            CREATE INDEX IF NOT EXISTS idx_events_created 
+                ON events(created_at);
+            
+            CREATE INDEX IF NOT EXISTS idx_events_timestamp 
+                ON events(timestamp);
+            
+            -- Snapshots (performance optimization for temporal replay)
+            CREATE TABLE IF NOT EXISTS snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                timestamp REAL NOT NULL,
+                
+                -- Compressed state
+                state_compressed BLOB NOT NULL,
+                
+                -- Metadata
+                event_count INTEGER NOT NULL,
+                storage_bytes INTEGER,
+                created_at REAL NOT NULL,
+                
+                CHECK (timestamp > 0)
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_snapshots_workspace_time 
+                ON snapshots(workspace_id, timestamp DESC);
+        """)
+        
+        # === COLD TIER SCHEMA ===
+        self.archive_db.executescript("""
+            -- Archived events (cold tier: 30+ days, compressed)
+            CREATE TABLE IF NOT EXISTS events_archive (
+                event_id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                
+                -- Compressed content (zlib)
+                content_compressed BLOB NOT NULL,
+                metadata_compressed BLOB,
+                
+                -- Searchable fields (NOT compressed for queries)
+                timestamp REAL NOT NULL,
+                
+                -- Hash-chain provenance (not compressed for verification)
+                previous_hash TEXT,
+                
+                -- Archival metadata
+                archived_at REAL NOT NULL,
+                compression_ratio REAL,
+                
+                CHECK (timestamp > 0)
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_archive_workspace_time 
+                ON events_archive(workspace_id, timestamp DESC);
+            
+            CREATE INDEX IF NOT EXISTS idx_archive_user_time 
+                ON events_archive(user_id, timestamp DESC);
+            
+            CREATE INDEX IF NOT EXISTS idx_archive_timestamp 
+                ON events_archive(timestamp);
+        """)
+        
+        self.db.commit()
+        self.archive_db.commit()
+    
+    # ==============================================
+    # EVENT STORAGE (Warm Tier)
+    # ==============================================
+    
+    def store_event(self, event: Event) -> bool:
+        """
+        Store event in warm tier with transaction safety.
+        
+        Uses INSERT OR REPLACE for idempotency.
+        Wraps in explicit transaction for safety.
+        
+        Called by async worker after event is written to STM.
+        Events stay in warm tier for 30 days, then archived.
+        
+        Returns:
+            True if stored successfully
+        
+        Raises:
+            LTMStorageError: If storage fails
+        """
+        try:
+            with TransactionContext(self.db, 'store_event') as txn:
+                txn.execute("""
+                    INSERT OR REPLACE INTO events (
+                        event_id, workspace_id, user_id, session_id,
+                        content,
+                        timestamp, created_at,
+                        previous_hash,
+                        metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    event.event_id,
+                    event.workspace_id,
+                    event.user_id,
+                    event.session_id,
+                    json.dumps(event.content),
+                    event.timestamp,
+                    event.created_at,
+                    event.previous_hash,
+                    json.dumps(event.metadata) if event.metadata else None
+                ))
+            
+            return True
+        
+        except sqlite3.Error as e:
+            error_msg = f"LTM store_event failed for {event.event_id}: {e}"
+            logger.error(f"[FAIL] {error_msg}")
+            raise LTMStorageError(error_msg) from e
+    
+    def store_events_batch(self, events: List[Event]) -> int:
+        """
+        Store multiple events in single transaction (PERFORMANCE OPTIMIZATION).
+        
+        Instead of 100 individual transactions (BEGIN→INSERT→COMMIT each),
+        this does 1 transaction with 100 inserts.
+        
+        Reduces SQLite overhead from ~100 fsyncs to 1 fsync per batch.
+        Expected improvement: 40x throughput increase.
+        
+        Args:
+            events: List of Event objects to store
+        
+        Returns:
+            Number of events successfully stored
+        
+        Raises:
+            LTMStorageError: If batch storage fails
+        """
+        if not events:
+            return 0
+        
+        try:
+            stored_count = 0
+            with TransactionContext(self.db, f'store_batch_{len(events)}') as txn:
+                for event in events:
+                    txn.execute("""
+                        INSERT OR REPLACE INTO events (
+                            event_id, workspace_id, user_id, session_id,
+                            content,
+                            timestamp, created_at,
+                            previous_hash,
+                            metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        event.event_id,
+                        event.workspace_id,
+                        event.user_id,
+                        event.session_id,
+                        json.dumps(event.content),
+                        event.timestamp,
+                        event.created_at,
+                        event.previous_hash,
+                        json.dumps(event.metadata) if event.metadata else None
+                    ))
+                    stored_count += 1
+            
+            logger.debug(f"[BATCH] Stored {stored_count} events in single transaction")
+            return stored_count
+        
+        except sqlite3.Error as e:
+            error_msg = f"LTM batch store failed for {len(events)} events: {e}"
+            logger.error(f"[FAIL] {error_msg}")
+            raise LTMStorageError(error_msg) from e
+    
+    def store_events_batch_raw(self, event_jsons: List[str]) -> int:
+        """
+        Store pre-serialized events (PERFORMANCE OPTIMIZATION).
+        
+        Skips Event object creation and re-serialization.
+        Used by async worker to avoid deserialize→re-serialize cycle.
+        
+        Args:
+            event_jsons: List of JSON strings (already serialized)
+        
+        Returns:
+            Number of events successfully stored
+        
+        Raises:
+            LTMStorageError: If batch storage fails
+        """
+        if not event_jsons:
+            return 0
+        
+        try:
+            stored_count = 0
+            with TransactionContext(self.db, f'store_batch_raw_{len(event_jsons)}') as txn:
+                for event_json in event_jsons:
+                    # Parse once to extract fields
+                    event_dict = json.loads(event_json)
+                    
+                    # Content/metadata are already JSON strings (or dicts)
+                    content_json = event_dict['content']
+                    if isinstance(content_json, dict):
+                        content_json = json.dumps(content_json)
+                    
+                    metadata_json = event_dict.get('metadata')
+                    if isinstance(metadata_json, dict):
+                        metadata_json = json.dumps(metadata_json)
+                    
+                    txn.execute("""
+                        INSERT OR REPLACE INTO events (
+                            event_id, workspace_id, user_id, session_id,
+                            content,
+                            timestamp, created_at,
+                            previous_hash,
+                            metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        event_dict['event_id'],
+                        event_dict['workspace_id'],
+                        event_dict['user_id'],
+                        event_dict['session_id'],
+                        content_json,
+                        event_dict['timestamp'],
+                        event_dict['created_at'],
+                        event_dict.get('previous_hash'),
+                        metadata_json
+                    ))
+                    stored_count += 1
+            
+            logger.debug(f"[BATCH_RAW] Stored {stored_count} events in single transaction")
+            return stored_count
+        
+        except sqlite3.Error as e:
+            error_msg = f"LTM batch store (raw) failed for {len(event_jsons)} events: {e}"
+            logger.error(f"[FAIL] {error_msg}")
+            raise LTMStorageError(error_msg) from e
+    
+    def get_event(self, event_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get event by ID (checks warm → cold).
+        
+        Returns full event data, uncompressed if from cold tier.
+        100% precise, never approximate.
+        """
+        # Try warm tier first
+        row = self.db.execute(
+            "SELECT * FROM events WHERE event_id = ?",
+            (event_id,)
+        ).fetchone()
+        
+        if row:
+            event_dict = dict(row)
+            # Parse JSON content
+            if event_dict.get('content'):
+                event_dict['content'] = json.loads(event_dict['content'])
+            if event_dict.get('metadata'):
+                event_dict['metadata'] = json.loads(event_dict['metadata'])
+            return event_dict
+        
+        # Check cold tier
+        archived = self.archive_db.execute(
+            "SELECT * FROM events_archive WHERE event_id = ?",
+            (event_id,)
+        ).fetchone()
+        
+        if archived:
+            # Decompress content
+            content_json = zlib.decompress(archived['content_compressed']).decode('utf-8')
+            content = json.loads(content_json)
+            
+            metadata = None
+            if archived['metadata_compressed']:
+                metadata_json = zlib.decompress(archived['metadata_compressed']).decode('utf-8')
+                metadata = json.loads(metadata_json)
+            
+            return {
+                'event_id': archived['event_id'],
+                'workspace_id': archived['workspace_id'],
+                'user_id': archived['user_id'],
+                'session_id': archived['session_id'],
+                'content': content,
+                'timestamp': archived['timestamp'],
+                'metadata': metadata,
+                'created_at': archived['archived_at']  # Use archive time as created_at
+            }
+        
+        return None
+    
+    
+    def get_event_by_id(self, event_id: str) -> Optional[Dict[str, Any]]:
+        """Alias for get_event() - used by controller"""
+        return self.get_event(event_id)
+    
+    def query_events(
+        self,
+        workspace_id: str,
+        user_id: Optional[str] = None,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+        limit: int = 100
+    ) -> List[Event]:
+        """
+        Query events across warm + cold tiers.
+        
+        Returns events in time range, newest first.
+        Automatically queries both tiers based on time range.
+        
+        Args:
+            workspace_id: Workspace to query
+            user_id: Optional user filter
+            start_time: Unix timestamp (None = from beginning)
+            end_time: Unix timestamp (None = until now)
+            limit: Max events to return
+        
+        Returns:
+            List of event dicts, sorted by timestamp DESC
+        """
+        events = []
+        
+        # Determine which tier(s) to query
+        now = time.time()
+        warm_cutoff = now - (self.warm_retention_days * 86400)
+        
+        query_warm = end_time is None or end_time > warm_cutoff
+        query_cold = start_time is None or start_time < warm_cutoff
+        
+        # Build WHERE clause
+        conditions = ["workspace_id = ?"]
+        params = [workspace_id]
+        
+        if user_id:
+            conditions.append("user_id = ?")
+            params.append(user_id)
+        
+        if start_time:
+            conditions.append("timestamp >= ?")
+            params.append(start_time)
+        
+        if end_time:
+            conditions.append("timestamp <= ?")
+            params.append(end_time)
+        
+        where_clause = " AND ".join(conditions)
+        
+        # Query warm tier
+        if query_warm:
+            warm_query = f"""
+                SELECT * FROM events
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """
+            warm_rows = self.db.execute(warm_query, params + [limit]).fetchall()
+            for row in warm_rows:
+                event_dict = dict(row)
+                # Parse JSON content
+                if event_dict.get('content'):
+                    event_dict['content'] = json.loads(event_dict['content'])
+                if event_dict.get('metadata'):
+                    event_dict['metadata'] = json.loads(event_dict['metadata'])
+                events.append(event_dict)
+        
+        # Query cold tier if needed
+        if query_cold and len(events) < limit:
+            remaining = limit - len(events)
+            cold_query = f"""
+                SELECT * FROM events_archive
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """
+            cold_rows = self.archive_db.execute(cold_query, params + [remaining]).fetchall()
+            
+            # Decompress cold events
+            for row in cold_rows:
+                content_json = zlib.decompress(row['content_compressed']).decode('utf-8')
+                content = json.loads(content_json)
+                
+                metadata = None
+                if row['metadata_compressed']:
+                    metadata_json = zlib.decompress(row['metadata_compressed']).decode('utf-8')
+                    metadata = json.loads(metadata_json)
+                
+                events.append({
+                    'event_id': row['event_id'],
+                    'workspace_id': row['workspace_id'],
+                    'user_id': row['user_id'],
+                    'session_id': row['session_id'],
+                    'content': content,
+                    'timestamp': row['timestamp'],
+                    'previous_hash': row['previous_hash'],  # FIX: Preserve hash chain
+                    'metadata': metadata,
+                    'created_at': row['archived_at']
+                })
+        
+        # Sort by timestamp (DESC) and apply limit
+        events.sort(key=lambda e: e['timestamp'], reverse=True)
+        event_dicts = events[:limit]
+        
+        # Convert dicts to Event objects
+        return [Event.from_dict(e) for e in event_dicts]
+    
+    def list_workspaces(self) -> List[Dict[str, Any]]:
+        """
+        List all workspaces with event counts.
+        
+        Returns:
+            List of workspace info dicts:
+            [
+                {
+                    'workspace_id': 'ws1',
+                    'event_count': 150,
+                    'user_count': 5,
+                    'oldest_event': 1700000000.0,
+                    'newest_event': 1732000000.0
+                },
+                ...
+            ]
+        """
+        # Query both warm and cold tiers
+        warm_workspaces = self.db.execute("""
+            SELECT 
+                workspace_id,
+                COUNT(*) as event_count,
+                COUNT(DISTINCT user_id) as user_count,
+                MIN(timestamp) as oldest_event,
+                MAX(timestamp) as newest_event
+            FROM events
+            GROUP BY workspace_id
+        """).fetchall()
+        
+        cold_workspaces = self.archive_db.execute("""
+            SELECT 
+                workspace_id,
+                COUNT(*) as event_count,
+                COUNT(DISTINCT user_id) as user_count,
+                MIN(timestamp) as oldest_event,
+                MAX(timestamp) as newest_event
+            FROM events_archive
+            GROUP BY workspace_id
+        """).fetchall()
+        
+        # Merge results
+        workspace_map: Dict[str, Dict[str, Any]] = {}
+        
+        for row in warm_workspaces:
+            ws_id = row['workspace_id']
+            workspace_map[ws_id] = {
+                'workspace_id': ws_id,
+                'event_count': row['event_count'],
+                'user_count': row['user_count'],
+                'oldest_event': row['oldest_event'],
+                'newest_event': row['newest_event']
+            }
+        
+        for row in cold_workspaces:
+            ws_id = row['workspace_id']
+            if ws_id in workspace_map:
+                # Merge with warm data
+                workspace_map[ws_id]['event_count'] += row['event_count']
+                workspace_map[ws_id]['user_count'] = max(
+                    workspace_map[ws_id]['user_count'],
+                    row['user_count']
+                )
+                workspace_map[ws_id]['oldest_event'] = min(
+                    workspace_map[ws_id]['oldest_event'],
+                    row['oldest_event']
+                )
+                workspace_map[ws_id]['newest_event'] = max(
+                    workspace_map[ws_id]['newest_event'],
+                    row['newest_event']
+                )
+            else:
+                # Cold-only workspace
+                workspace_map[ws_id] = {
+                    'workspace_id': ws_id,
+                    'event_count': row['event_count'],
+                    'user_count': row['user_count'],
+                    'oldest_event': row['oldest_event'],
+                    'newest_event': row['newest_event']
+                }
+        
+        return list(workspace_map.values())
+    
+    # ==============================================
+    # ARCHIVAL PROCESS (Warm → Cold)
+    # ==============================================
+    
+    def archive_old_events(self, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        Archive events older than warm_retention_days with transaction safety.
+        
+        Two-phase commit:
+        1. Write to cold tier (with transaction)
+        2. Delete from warm tier (with transaction)
+        
+        If step 2 fails, events are in both tiers (safe redundancy).
+        If step 1 fails, events stay in warm tier only (no data loss).
+        
+        Args:
+            dry_run: If True, report what would be archived but don't do it
+        
+        Returns:
+            Stats about archival process
+        
+        Raises:
+            LTMArchivalError: If archival fails
+        """
+        cutoff = time.time() - (self.warm_retention_days * 86400)
+        
+        # Find events to archive
+        old_events = self.db.execute("""
+            SELECT * FROM events
+            WHERE timestamp < ?
+            ORDER BY timestamp
+        """, (cutoff,)).fetchall()
+        
+        if not old_events:
+            return {
+                'events_archived': 0,
+                'bytes_saved': 0,
+                'compression_ratio': 0
+            }
+        
+        if dry_run:
+            total_size = sum(
+                len(e['content']) + len(e['metadata'] or '')
+                for e in old_events
+            )
+            return {
+                'events_to_archive': len(old_events),
+                'estimated_bytes': total_size,
+                'estimated_compressed': total_size // 4
+            }
+        
+        # Archive with two-phase commit
+        total_original_size = 0
+        total_compressed_size = 0
+        archived_count = 0
+        event_ids_archived = []
+        
+        try:
+            # PHASE 1: Write to cold tier (transactional)
+            with TransactionContext(self.archive_db, 'archive_to_cold') as cold_txn:
+                for event in old_events:
+                    # Compress content
+                    content_compressed = zlib.compress(
+                        event['content'].encode('utf-8'),
+                        level=self.compression_level
+                    )
+                    
+                    metadata_compressed = None
+                    if event['metadata']:
+                        metadata_compressed = zlib.compress(
+                            event['metadata'].encode('utf-8'),
+                            level=self.compression_level
+                        )
+                    
+                    # Calculate sizes
+                    original_size = (
+                        len(event['content']) +
+                        len(event['metadata'] or '')
+                    )
+                    compressed_size = (
+                        len(content_compressed) +
+                        (len(metadata_compressed) if metadata_compressed else 0)
+                    )
+                    
+                    total_original_size += original_size
+                    total_compressed_size += compressed_size
+                    
+                    compression_ratio = (
+                        compressed_size / original_size 
+                        if original_size > 0 
+                        else 0
+                    )
+                    
+                    # Insert into cold tier (idempotent with INSERT OR REPLACE)
+                    cold_txn.execute("""
+                        INSERT OR REPLACE INTO events_archive (
+                            event_id, workspace_id, user_id, session_id,
+                            content_compressed, metadata_compressed,
+                            timestamp,
+                            previous_hash,
+                            archived_at, compression_ratio
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        event['event_id'],
+                        event['workspace_id'],
+                        event['user_id'],
+                        event['session_id'],
+                        content_compressed,
+                        metadata_compressed,
+                        event['timestamp'],
+                        event.get('previous_hash'),
+                        time.time(),
+                        compression_ratio
+                    ))
+                    
+                    archived_count += 1
+                    event_ids_archived.append(event['event_id'])
+            
+            # PHASE 2: Delete from warm tier (transactional)
+            # Only delete if cold write succeeded
+            with TransactionContext(self.db, 'delete_from_warm') as warm_txn:
+                placeholders = ','.join('?' * len(event_ids_archived))
+                warm_txn.execute(
+                    f"DELETE FROM events WHERE event_id IN ({placeholders})",
+                    event_ids_archived
+                )
+            
+            # Success metrics
+            avg_compression = (
+                total_compressed_size / total_original_size 
+                if total_original_size > 0 
+                else 0
+            )
+            bytes_saved = total_original_size - total_compressed_size
+            
+            logger.info(f"[OK] Archived {archived_count} events")
+            logger.info(f"   Original: {total_original_size / 1024:.1f} KB")
+            logger.info(f"   Compressed: {total_compressed_size / 1024:.1f} KB")
+            logger.info(f"   Saved: {bytes_saved / 1024:.1f} KB ({(1 - avg_compression) * 100:.1f}%)")
+            
+            return {
+                'events_archived': archived_count,
+                'original_bytes': total_original_size,
+                'compressed_bytes': total_compressed_size,
+                'bytes_saved': bytes_saved,
+                'compression_ratio': avg_compression
+            }
+        
+        except sqlite3.Error as e:
+            error_msg = f"Archival failed: {e}"
+            logger.error(f"[FAIL] {error_msg}")
+            raise LTMArchivalError(error_msg) from e
+    
+    def start_archival_worker(self, interval_hours: int = 24):
+        """
+        Start background thread for automatic archival.
+        
+        Args:
+            interval_hours: Hours between archival runs (default 24)
+        """
+        if self._archival_running:
+            print("[WARN] Archival worker already running")
+            return
+        
+        self._archival_running = True
+        self._archival_worker_thread = threading.Thread(
+            target=self._archival_worker_loop,
+            args=(interval_hours,),
+            daemon=True,
+            name="ltm-archival-worker"
+        )
+        self._archival_worker_thread.start()
+        print(f"[OK] Auto-archival worker started (interval: {interval_hours}h)")
+    
+    def stop_archival_worker(self):
+        """Stop archival worker."""
+        if not self._archival_running:
+            return
+        
+        self._archival_running = False
+        if self._archival_worker_thread:
+            self._archival_worker_thread.join(timeout=5)
+        print("[OK] Auto-archival worker stopped")
+    
+    def _archival_worker_loop(self, interval_hours: int):
+        """Background loop for archival."""
+        interval_seconds = interval_hours * 3600
+        
+        while self._archival_running:
+            try:
+                # Run archival
+                result = self.archive_old_events(dry_run=False)
+                
+                if result['events_archived'] > 0:
+                    print(f"[AUTO-ARCHIVE] Archived {result['events_archived']} events")
+                
+                # Sleep until next run
+                time.sleep(interval_seconds)
+                
+            except Exception as e:
+                print(f"[FAIL] Auto-archival error: {e}")
+                time.sleep(3600)  # Retry in 1 hour on error
+    
+    # ==============================================
+    # SNAPSHOTS (Performance Optimization)
+    # ==============================================
+    
+    def create_snapshot(
+        self,
+        workspace_id: str,
+        user_id: str,
+        state: Dict[str, Any]
+    ) -> str:
+        """
+        Create compressed snapshot with transaction safety.
+        
+        Snapshots are optional performance optimization.
+        They enable fast temporal replay without querying all events.
+        
+        Args:
+            workspace_id: Workspace ID
+            user_id: User ID
+            state: Workspace state (dict with events and metadata)
+        
+        Returns:
+            snapshot_id
+        
+        Raises:
+            LTMSnapshotError: If snapshot creation fails
+        """
+        snapshot_id = f"snap_{workspace_id}_{int(time.time())}"
+        timestamp = time.time()
+        
+        try:
+            # Compress state
+            state_json = json.dumps(state)
+            state_compressed = zlib.compress(
+                state_json.encode('utf-8'),
+                level=self.compression_level
+            )
+            
+            storage_bytes = len(state_compressed)
+            event_count = len(state.get('events', []))
+            
+            # Store with transaction
+            with TransactionContext(self.db, 'create_snapshot') as txn:
+                txn.execute("""
+                    INSERT INTO snapshots (
+                        snapshot_id, workspace_id, user_id, timestamp,
+                        state_compressed, event_count, storage_bytes, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    snapshot_id,
+                    workspace_id,
+                    user_id,
+                    timestamp,
+                    state_compressed,
+                    event_count,
+                    storage_bytes,
+                    time.time()
+                ))
+            
+            logger.info(f"[OK] Snapshot: {snapshot_id} ({storage_bytes / 1024:.1f} KB)")
+            
+            return snapshot_id
+        
+        except sqlite3.Error as e:
+            error_msg = f"Snapshot creation failed: {e}"
+            logger.error(f"[FAIL] {error_msg}")
+            raise LTMSnapshotError(error_msg) from e
+    
+    def get_snapshot(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
+        """Get snapshot by ID and decompress"""
+        row = self.db.execute(
+            "SELECT * FROM snapshots WHERE snapshot_id = ?",
+            (snapshot_id,)
+        ).fetchone()
+        
+        if not row:
+            return None
+        
+        # Decompress state
+        state_json = zlib.decompress(row['state_compressed']).decode('utf-8')
+        state = json.loads(state_json)
+        
+        return {
+            'snapshot_id': row['snapshot_id'],
+            'workspace_id': row['workspace_id'],
+            'user_id': row['user_id'],
+            'timestamp': row['timestamp'],
+            'state': state,
+            'event_count': row['event_count'],
+            'storage_bytes': row['storage_bytes'],
+            'created_at': row['created_at']
+        }
+    
+    def find_nearest_snapshot(
+        self,
+        workspace_id: str,
+        timestamp: float
+    ) -> Optional[Dict[str, Any]]:
+        """Find nearest snapshot before given timestamp"""
+        row = self.db.execute("""
+            SELECT * FROM snapshots
+            WHERE workspace_id = ?
+            AND timestamp <= ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (workspace_id, timestamp)).fetchone()
+        
+        if not row:
+            return None
+        
+        return self.get_snapshot(row['snapshot_id'])
+    
+    # ==============================================
+    # AUTO-SNAPSHOT WORKER
+    # ==============================================
+    
+    def start_snapshot_worker(self, interval_hours: int = 168):
+        """
+        Start background thread for automatic snapshots.
+        
+        Args:
+            interval_hours: Hours between snapshots (default 168=weekly)
+        """
+        if self._snapshot_running:
+            print("[WARN] Snapshot worker already running")
+            return
+        
+        self._snapshot_running = True
+        self._snapshot_worker_thread = threading.Thread(
+            target=self._snapshot_worker_loop,
+            args=(interval_hours,),
+            daemon=True,
+            name="ltm-snapshot-worker"
+        )
+        self._snapshot_worker_thread.start()
+        print(f"[OK] Auto-snapshot worker started (interval: {interval_hours}h)")
+    
+    def stop_snapshot_worker(self):
+        """Stop snapshot worker."""
+        if not self._snapshot_running:
+            return
+        
+        self._snapshot_running = False
+        if self._snapshot_worker_thread:
+            self._snapshot_worker_thread.join(timeout=5)
+        print("[OK] Auto-snapshot worker stopped")
+    
+    def _snapshot_worker_loop(self, interval_hours: int):
+        """Background loop for snapshots."""
+        interval_seconds = interval_hours * 3600
+        
+        while self._snapshot_running:
+            try:
+                # Get all workspaces
+                workspaces = self.list_workspaces()
+                
+                # Create snapshot for each workspace
+                for ws in workspaces:
+                    workspace_id = ws['workspace_id']
+                    
+                    # Get recent events for snapshot
+                    events = self.query_events(
+                        workspace_id=workspace_id,
+                        limit=10000
+                    )
+                    
+                    if events:
+                        state = {
+                            'events': events,
+                            'workspace_id': workspace_id,
+                            'snapshot_time': time.time()
+                        }
+                        
+                        # Use first user_id or 'system'
+                        user_id = events[0].get('user_id', 'system') if events else 'system'
+                        
+                        snapshot_id = self.create_snapshot(workspace_id, user_id, state)
+                        print(f"[AUTO-SNAPSHOT] Created {snapshot_id}")
+                
+                # Sleep until next run
+                time.sleep(interval_seconds)
+                
+            except Exception as e:
+                print(f"[FAIL] Auto-snapshot error: {e}")
+                time.sleep(3600)  # Retry in 1 hour on error
+    
+    # ==============================================
+    # TEMPORAL REPLAY
+    # ==============================================
+    
+    def replay_to_timestamp(
+        self,
+        workspace_id: str,
+        user_id: str,
+        timestamp: float,
+        use_snapshots: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Reconstruct workspace state at specific timestamp.
+        
+        100% precise for any timestamp since instantiation.
+        
+        Strategy:
+        1. If use_snapshots=True, try to find nearest snapshot before timestamp
+        2. Query events from (snapshot_time or beginning) to timestamp
+        3. Reconstruct state
+        
+        Args:
+            workspace_id: Workspace ID
+            user_id: User ID
+            timestamp: Unix timestamp to replay to
+            use_snapshots: Use snapshots for performance (default True)
+        
+        Returns:
+            {
+                'events': [...],  # All events up to timestamp
+                'stats': {...},   # Aggregated statistics
+                'snapshot_used': bool,
+                'query_duration_ms': float
+            }
+        """
+        start_time = time.time()
+        
+        base_state = None
+        query_start_time = 0
+        
+        # Try to use snapshot for performance
+        if use_snapshots:
+            snapshot = self.find_nearest_snapshot(workspace_id, timestamp)
+            if snapshot:
+                base_state = snapshot['state']
+                query_start_time = snapshot['timestamp']
+                print(f"   Using snapshot from {datetime.fromtimestamp(query_start_time)}")
+        
+        # Query events from snapshot time (or beginning) to target timestamp
+        events = self.query_events(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            start_time=query_start_time,
+            end_time=timestamp,
+            limit=100000  # No practical limit
+        )
+        
+        # Reconstruct state
+        if base_state:
+            # Merge snapshot state with new events
+            all_events = base_state.get('events', []) + events
+        else:
+            all_events = events
+        
+        # Calculate stats (generic - no cost assumptions)
+        query_duration_ms = (time.time() - start_time) * 1000
+        
+        result = {
+            'workspace_id': workspace_id,
+            'user_id': user_id,
+            'target_timestamp': timestamp,
+            'target_datetime': datetime.fromtimestamp(timestamp).isoformat(),
+            'events': all_events,
+            'event_count': len(all_events),
+            'snapshot_used': base_state is not None,
+            'query_duration_ms': query_duration_ms
+        }
+        
+        print(f"[REPLAY] Replayed to {datetime.fromtimestamp(timestamp)}")
+        print(f"   Events: {len(all_events)}")
+        print(f"   Query time: {query_duration_ms:.1f}ms")
+        
+        return result
+    
+    # ==============================================
+    # SYSTEM BACKUP & RECOVERY
+    # ==============================================
+    
+    def create_system_backup(self, backup_path: str) -> Dict[str, Any]:
+        """
+        Create full system backup (all workspaces).
+        
+        Includes:
+        - Warm tier database
+        - Cold tier database
+        - Manifest with metadata
+        
+        Use case: Disaster recovery, migration
+        """
+        backup_file = Path(backup_path)
+        backup_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Close connections for clean backup
+        self.db.close()
+        self.archive_db.close()
+        
+        start_time = time.time()
+        
+        try:
+            # Create tarball
+            with tarfile.open(backup_path, 'w:gz') as tar:
+                # Add warm database
+                tar.add(self.db_path, arcname='events.db')
+                
+                # Add cold database
+                tar.add(self.archive_db_path, arcname='events_archive.db')
+                
+                # Create manifest
+                manifest = {
+                    'version': '1.0',
+                    'created_at': time.time(),
+                    'created_datetime': datetime.now().isoformat(),
+                    'warm_db_size': self.db_path.stat().st_size,
+                    'cold_db_size': self.archive_db_path.stat().st_size,
+                }
+                
+                # Write manifest to temp file
+                manifest_path = self.data_path / 'backup_manifest.json'
+                with open(manifest_path, 'w') as f:
+                    json.dump(manifest, f, indent=2)
+                
+                tar.add(manifest_path, arcname='manifest.json')
+                manifest_path.unlink()  # Clean up temp file
+            
+            duration = time.time() - start_time
+            backup_size = backup_file.stat().st_size
+            
+            print(f"[OK] System backup created: {backup_path}")
+            print(f"   Size: {backup_size / (1024 * 1024):.1f} MB")
+            print(f"   Duration: {duration:.1f}s")
+            
+            return {
+                'success': True,
+                'backup_path': str(backup_path),
+                'backup_size': backup_size,
+                'duration_seconds': duration,
+                'manifest': manifest
+            }
+        
+        finally:
+            # Reconnect
+            self._connect()
+    
+    def restore_from_backup(self, backup_path: str) -> bool:
+        """
+        Restore kernel from backup.
+        
+        ⚠️ WARNING: Overwrites current data!
+        """
+        backup_file = Path(backup_path)
+        
+        if not backup_file.exists():
+            print(f"[FAIL] Backup file not found: {backup_path}")
+            return False
+        
+        # Close connections
+        self.close()
+        
+        try:
+            # Extract backup
+            with tarfile.open(backup_path, 'r:gz') as tar:
+                tar.extractall(path=self.data_path)
+            
+            # Reconnect
+            self._connect()
+            
+            print(f"[OK] System restored from: {backup_path}")
+            return True
+            
+        except Exception as e:
+            print(f"[FAIL] Restore failed: {e}")
+            return False
+    
+    def verify_integrity(self) -> Dict[str, Any]:
+        """
+        Verify database integrity.
+        
+        Returns health status of both tiers.
+        """
+        # Check SQLite integrity
+        warm_ok = self.db.execute("PRAGMA integrity_check").fetchone()[0] == 'ok'
+        cold_ok = self.archive_db.execute("PRAGMA integrity_check").fetchone()[0] == 'ok'
+        
+        # Count events
+        warm_count = self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        cold_count = self.archive_db.execute("SELECT COUNT(*) FROM events_archive").fetchone()[0]
+        
+        # Get storage sizes
+        warm_size = self.db_path.stat().st_size
+        cold_size = self.archive_db_path.stat().st_size
+        
+        return {
+            'healthy': warm_ok and cold_ok,
+            'warm_tier': {
+                'integrity_ok': warm_ok,
+                'event_count': warm_count,
+                'size_bytes': warm_size,
+                'size_mb': warm_size / (1024 * 1024)
+            },
+            'cold_tier': {
+                'integrity_ok': cold_ok,
+                'event_count': cold_count,
+                'size_bytes': cold_size,
+                'size_mb': cold_size / (1024 * 1024)
+            },
+            'total_events': warm_count + cold_count,
+            'total_size_mb': (warm_size + cold_size) / (1024 * 1024)
+        }
+    
+    # ==============================================
+    # STATS & LIFECYCLE
+    # ==============================================
+    
+    
+    def verify_archival_integrity(self) -> Dict[str, Any]:
+        """
+        Verify archival integrity - check for events in both tiers.
+        
+        This is expected after incomplete archival (phase 1 succeeded, phase 2 failed).
+        Not an error - just redundancy.
+        
+        Returns:
+            {
+                'events_in_both_tiers': int,
+                'warm_only': int,
+                'cold_only': int,
+                'total_events': int,
+                'has_redundancy': bool
+            }
+        """
+        try:
+            # Get all event IDs from warm
+            warm_ids = set(
+                row[0] for row in 
+                self.db.execute("SELECT event_id FROM events").fetchall()
+            )
+            
+            # Get all event IDs from cold
+            cold_ids = set(
+                row[0] for row in 
+                self.archive_db.execute(
+                    "SELECT event_id FROM events_archive"
+                ).fetchall()
+            )
+            
+            # Calculate overlaps
+            both_tiers = warm_ids & cold_ids
+            warm_only = warm_ids - cold_ids
+            cold_only = cold_ids - warm_ids
+            
+            return {
+                'events_in_both_tiers': len(both_tiers),
+                'warm_only': len(warm_only),
+                'cold_only': len(cold_only),
+                'total_events': len(warm_ids | cold_ids),
+                'has_redundancy': len(both_tiers) > 0
+            }
+        
+        except sqlite3.Error as e:
+            logger.error(f"[FAIL] Integrity check failed: {e}")
+            raise LTMIntegrityError(f"Cannot verify integrity: {e}") from e
+    
+    def get_storage_stats(self) -> Dict[str, Any]:
+        """Get storage statistics for both tiers"""
+        return self.verify_integrity()
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get LTM statistics for monitoring.
+        
+        Returns:
+            Dictionary with warm/cold tier stats
+        """
+        try:
+            # Count events in each tier
+            warm_count = self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            cold_count = self.archive_db.execute("SELECT COUNT(*) FROM events_archive").fetchone()[0]
+            
+            # Database file sizes
+            warm_size = 0
+            cold_size = 0
+            if self.db_path.exists():
+                warm_size = self.db_path.stat().st_size
+            if self.archive_db_path.exists():
+                cold_size = self.archive_db_path.stat().st_size
+            
+            return {
+                'warm_events': warm_count,
+                'cold_events': cold_count,
+                'total_events': warm_count + cold_count,
+                'warm_size_mb': round(warm_size / (1024 * 1024), 2),
+                'cold_size_mb': round(cold_size / (1024 * 1024), 2),
+                'total_size_mb': round((warm_size + cold_size) / (1024 * 1024), 2)
+            }
+        except Exception as e:
+            logger.error(f"[FAIL] Get stats error: {e}")
+            return {
+                'warm_events': 0,
+                'cold_events': 0,
+                'total_events': 0,
+                'warm_size_mb': 0,
+                'cold_size_mb': 0,
+                'total_size_mb': 0
+            }
+    
+    def close(self):
+        """Close database connections and stop workers"""
+        # Stop workers
+        if self._archival_running:
+            self.stop_archival_worker()
+        
+        if self._snapshot_running:
+            self.stop_snapshot_worker()
+        
+        # Close connections
+        if self.db:
+            self.db.close()
+            self.db = None
+        
+        if self.archive_db:
+            self.archive_db.close()
+            self.archive_db = None
+        
+        print("[OK] LTM connections closed")

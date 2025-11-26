@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Cancellation and correction verbs for supersession detection",
+    "usage": "Events containing these words about the same subject often supersede previous events"
+  },
+  "cancellation_verbs": [
+    "cancel", "cancelled", "canceled",
+    "revoke", "revoked",
+    "retract", "retracted",
+    "withdraw", "withdrew", "withdrawn",
+    "rescind", "rescinded",
+    "void", "voided",
+    "nullify", "nullified",
+    "invalidate", "invalidated",
+    "reverse", "reversed",
+    "undo", "undone"
+  ],
+  "correction_phrases": [
+    "actually",
+    "correction",
+    "update",
+    "revised",
+    "amendment",
+    "instead",
+    "rather",
+    "change that",
+    "scratch that",
+    "ignore previous",
+    "disregard",
+    "never mind",
+    "my mistake",
+    "I was wrong",
+    "let me correct",
+    "to clarify"
+  ]
+}

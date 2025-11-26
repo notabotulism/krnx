@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chillbot"
+version = "0.1.0"
+description = "AI Memory Infrastructure - The substrate for AI agents that remember"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Ben", email = "ben@chillbot.io"}
+]
+keywords = [
+    "ai",
+    "memory",
+    "agents",
+    "llm",
+    "embeddings",
+    "vector-database",
+    "temporal",
+    "infrastructure",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Database",
+]
+
+dependencies = [
+    "httpx>=0.25.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+compute = [
+    "sentence-transformers>=2.2.0",
+    "qdrant-client>=1.7.0",
+]
+server = [
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "redis>=5.0.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+]
+all = [
+    "sentence-transformers>=2.2.0",
+    "qdrant-client>=1.7.0",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "redis>=5.0.0",
+]
+
+[project.scripts]
+chillbot-server = "chillbot.server:main"
+chillbot-worker = "chillbot.compute.worker:main"
+
+[project.urls]
+Homepage = "https://chillbot.io"
+Documentation = "https://docs.chillbot.io"
+Repository = "https://github.com/chillbot/chillbot"
+Issues = "https://github.com/chillbot/chillbot/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chillbot*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

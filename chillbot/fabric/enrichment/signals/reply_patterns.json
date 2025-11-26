@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Reply and acknowledgment patterns for structural relation detection",
+    "usage": "Detects when an event is a direct reply or acknowledgment to a previous event"
+  },
+  "acknowledgments": [
+    "thanks", "thank you", "thx", "ty",
+    "ok", "okay", "got it", "understood",
+    "sounds good", "perfect", "great",
+    "will do", "on it", "done",
+    "noted", "roger", "copy that",
+    "makes sense", "i see", "ah",
+    "cool", "nice", "awesome"
+  ],
+  "follow_ups": [
+    "also", "additionally", "by the way", "btw",
+    "oh and", "one more thing", "forgot to mention",
+    "related to that", "speaking of which",
+    "on that note", "while we're at it"
+  ],
+  "corrections": [
+    "actually", "wait", "hold on",
+    "scratch that", "never mind", "ignore that",
+    "correction", "update", "revised",
+    "let me rephrase", "what i meant was",
+    "to clarify", "to be clear"
+  ],
+  "questions": [
+    "?", "what", "when", "where", "who", "why", "how",
+    "could you", "can you", "would you",
+    "is it", "are you", "do you", "did you"
+  ]
+}

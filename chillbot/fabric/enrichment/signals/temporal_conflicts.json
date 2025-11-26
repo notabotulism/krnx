@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Temporal reference patterns and conflicts",
+    "usage": "Detects conflicting time references like 'today' vs 'tomorrow'"
+  },
+  "days": [
+    "monday", "tuesday", "wednesday", "thursday", 
+    "friday", "saturday", "sunday"
+  ],
+  "relative_times": [
+    "today", "tomorrow", "yesterday",
+    "next week", "last week", "this week",
+    "next month", "last month", "this month",
+    "next year", "last year", "this year",
+    "now", "later", "soon", "immediately",
+    "morning", "afternoon", "evening", "tonight"
+  ],
+  "conflict_pairs": [
+    ["today", "tomorrow"],
+    ["today", "yesterday"],
+    ["tomorrow", "yesterday"],
+    ["next week", "last week"],
+    ["next week", "this week"],
+    ["last week", "this week"],
+    ["next month", "last month"],
+    ["next month", "this month"],
+    ["last month", "this month"],
+    ["next year", "last year"],
+    ["next year", "this year"],
+    ["last year", "this year"],
+    ["morning", "afternoon"],
+    ["morning", "evening"],
+    ["afternoon", "evening"],
+    ["now", "later"]
+  ]
+}
