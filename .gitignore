@@ -15,3 +15,9 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+/archive/
+
+# Development cruft
+**/archive/
+*.backup
+*\ (*)*
