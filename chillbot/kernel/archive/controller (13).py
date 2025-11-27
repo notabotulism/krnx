@@ -793,42 +793,6 @@ def create_krnx(
 
 
 # ==============================================
-# TELEMETRY DATA CLASS
-# ==============================================
-
-@dataclass
-class RetrievalTelemetry:
-    """
-    Telemetry data for retrieval operations (Constitution 6.5).
-    
-    Captures metrics about event retrieval for app-layer analysis.
-    Kernel collects; app layer decides what to do with it.
-    """
-    workspace_id: str
-    user_id: str
-    query_type: str  # 'query', 'replay', 'get_event'
-    events_returned: int
-    latency_ms: float
-    source: str  # 'stm', 'ltm_warm', 'ltm_cold', 'mixed'
-    timestamp: float = None
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = time.time()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'workspace_id': self.workspace_id,
-            'user_id': self.user_id,
-            'query_type': self.query_type,
-            'events_returned': self.events_returned,
-            'latency_ms': round(self.latency_ms, 3),
-            'source': self.source,
-            'timestamp': self.timestamp
-        }
-
-
-# ==============================================
 # EXPORTS
 # ==============================================
 
@@ -839,5 +803,4 @@ __all__ = [
     'RedisUnavailableError',
     'WorkerMetrics',
     'ErrorTracker',
-    'RetrievalTelemetry',
 ]

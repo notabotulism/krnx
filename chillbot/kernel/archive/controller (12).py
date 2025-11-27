@@ -1,14 +1,16 @@
 """
-KRNX Controller - Pure Kernel v0.3.6 TURBO (NOGROUP Recovery + Metrics Fix)
+KRNX Controller - Pure Kernel v0.3.5 TURBO (Backpressure Recovery Fix)
 
-CRITICAL FIX: Worker resilience and backpressure recovery
-Before: Stream deletion (e.g., in tests) caused NOGROUP errors, worker couldn't process
-After:  Worker recreates consumer group on NOGROUP error, proper recovery
+CRITICAL FIX: Backpressure recovery mechanism
+Before: System enters backpressure and NEVER recovers (0% recovery rate)
+After:  Proper check order + correct metrics = reliable recovery
 
-Changes from v0.3.5:
-- FIX: Worker recreates consumer group when NOGROUP error occurs
-- FIX: More robust metrics calculation (handles missing stream/group)
-- FIX: Proper backpressure recovery after queue drains
+Changes from v0.3.4:
+- FIX: Check order - evaluate metrics BEFORE rejecting writes
+- FIX: Queue depth uses XPENDING (unprocessed) not XLEN (total)
+- FIX: Lag uses first-entry (oldest) not last-entry (newest)
+- FIX: Worker trims stream after ACK (XTRIM) to reflect true state
+- PERF: Force metrics re-evaluation every check interval in backpressure mode
 """
 
 import time
@@ -109,10 +111,10 @@ class ErrorTracker:
 
 class KRNXController:
     """
-    KRNX Kernel Controller v0.3.6 TURBO (NOGROUP Recovery + Metrics Fix)
+    KRNX Kernel Controller v0.3.5 TURBO (Backpressure Recovery Fix)
     
-    CRITICAL FIX: Worker resilience and backpressure recovery.
-    Worker now recreates consumer group on NOGROUP error.
+    CRITICAL FIX: Backpressure recovery mechanism.
+    Previous version entered backpressure and never recovered.
     """
     
     def __init__(
@@ -140,7 +142,7 @@ class KRNXController:
         self.data_path = Path(data_path)
         self.data_path.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"[START] Initializing KRNX kernel v0.3.6 at {data_path}")
+        logger.info(f"[START] Initializing KRNX kernel v0.3.5 at {data_path}")
         
         # Settings
         self.max_queue_depth = max_queue_depth
@@ -197,7 +199,7 @@ class KRNXController:
         if enable_async_worker:
             self._start_ltm_worker()
         
-        logger.info(f"[OK] KRNX kernel v0.3.6 initialized")
+        logger.info(f"[OK] KRNX kernel v0.3.5 initialized")
         logger.info(f"   Backpressure: {enable_backpressure}")
         logger.info(f"   Max queue depth: {max_queue_depth}")
         logger.info(f"   Max lag: {max_lag_seconds}s")
@@ -354,60 +356,43 @@ class KRNXController:
         """
         Get worker health metrics.
         
-        v0.3.6 FIX: Correct queue depth and lag calculation
-        - XPENDING 'pending' count is the ONLY accurate measure of unprocessed work
-        - When pending = 0, queue is fully processed regardless of stream length
-        - Lag only matters when there's pending work
+        v0.3.5 FIX: Accurate queue depth and lag calculation
+        - Uses XPENDING for actual unprocessed count (not XLEN)
+        - Uses first-entry timestamp for lag (oldest message)
+        - Handles empty queue correctly (lag=0)
         """
         redis_client = get_redis_client()
         
         try:
-            # Get queue depth from XPENDING (actual unprocessed messages)
-            queue_depth = 0
-            has_pending_info = False
-            
+            # FIXED: Use XPENDING to get actual unprocessed count
+            # XLEN returns total stream length including ACK'd messages
             try:
                 pending_info = redis_client.xpending('krnx:ltm:queue', 'krnx-ltm-workers')
-                if pending_info:
-                    has_pending_info = True
-                    # 'pending' is the count of delivered-but-not-ACK'd messages
-                    queue_depth = pending_info.get('pending', 0)
-                    
-                    # CRITICAL: If pending is 0, the queue is FULLY PROCESSED
-                    # regardless of how many messages are in the stream (XLEN)
-            except Exception as e:
-                # Consumer group doesn't exist yet - check stream length as fallback
-                if "NOGROUP" in str(e):
-                    try:
-                        # No consumer group = nothing processed = all messages are "pending"
-                        queue_depth = redis_client.xlen('krnx:ltm:queue')
-                    except Exception:
-                        queue_depth = 0
+                queue_depth = pending_info['pending'] if pending_info else 0
+            except Exception:
+                # Fallback to XLEN if consumer group doesn't exist yet
+                queue_depth = redis_client.xlen('krnx:ltm:queue')
             
-            # Calculate lag - only meaningful when there's pending work
+            # FIXED: Calculate lag from oldest unprocessed message (first-entry)
+            # Not from newest message (last-entry)
             lag_seconds = 0.0
-            
-            # CRITICAL: If queue is empty (no pending), lag is 0
-            if queue_depth == 0:
-                lag_seconds = 0.0
-            else:
-                try:
-                    stream_info = redis_client.xinfo_stream('krnx:ltm:queue')
-                    stream_length = stream_info.get('length', 0)
-                    
-                    if stream_length > 0 and 'first-entry' in stream_info:
-                        first_entry = stream_info.get('first-entry')
-                        if first_entry and len(first_entry) >= 1:
-                            msg_id = first_entry[0]
-                            if isinstance(msg_id, bytes):
-                                msg_id = msg_id.decode('utf-8')
-                            
-                            # Extract timestamp from message ID
-                            msg_timestamp_ms = int(msg_id.split('-')[0])
-                            now_ms = int(time.time() * 1000)
-                            lag_seconds = max(0, (now_ms - msg_timestamp_ms) / 1000.0)
-                except Exception:
-                    lag_seconds = 0.0
+            try:
+                stream_info = redis_client.xinfo_stream('krnx:ltm:queue')
+                stream_length = stream_info.get('length', 0)
+                
+                if stream_length > 0 and 'first-entry' in stream_info:
+                    first_entry = stream_info.get('first-entry')
+                    if first_entry and len(first_entry) >= 1:
+                        msg_id = first_entry[0]
+                        if isinstance(msg_id, bytes):
+                            msg_id = msg_id.decode('utf-8')
+                        
+                        # Extract timestamp from message ID (format: timestamp-sequence)
+                        msg_timestamp_ms = int(msg_id.split('-')[0])
+                        now_ms = int(time.time() * 1000)
+                        lag_seconds = max(0, (now_ms - msg_timestamp_ms) / 1000.0)
+            except Exception:
+                pass
             
             error_info = self._error_tracker.get_last_error()
             
@@ -454,31 +439,23 @@ class KRNXController:
         self._ltm_worker_thread.start()
         logger.info("[OK] LTM worker started")
     
-    def _ensure_consumer_group(self, redis_client):
-        """Ensure consumer group exists (call before XREADGROUP operations)."""
-        try:
-            redis_client.xgroup_create('krnx:ltm:queue', 'krnx-ltm-workers', id='0', mkstream=True)
-            logger.debug("[WORKER] Consumer group created/verified")
-        except Exception as e:
-            if "BUSYGROUP" not in str(e):
-                # Only log if it's not "group already exists"
-                logger.debug(f"[WORKER] Consumer group check: {e}")
-    
     def _ltm_worker_loop(self):
         """
         LTM worker with batch accumulation and stream trimming.
         
-        v0.3.6 FIX: 
-        - Handle NOGROUP errors by recreating consumer group
-        - This allows recovery after stream deletion (e.g., in tests)
+        v0.3.5 FIX: XTRIM after XACK to properly reduce queue depth
         """
         worker_id = f"worker-{int(time.time())}"
         redis_client = get_redis_client()
         
         # Ensure consumer group exists
-        self._ensure_consumer_group(redis_client)
+        try:
+            redis_client.xgroup_create('krnx:ltm:queue', 'krnx-ltm-workers', id='0', mkstream=True)
+        except Exception as e:
+            if "BUSYGROUP" not in str(e):
+                logger.error(f"[WORKER] Failed to create group: {e}")
         
-        logger.info(f"[WORKER] LTM worker '{worker_id}' started (v0.3.6 with NOGROUP recovery)")
+        logger.info(f"[WORKER] LTM worker '{worker_id}' started (v0.3.5 with XTRIM)")
         
         # Batch accumulation
         pending_events = []
@@ -556,17 +533,9 @@ class KRNXController:
                     batch_start_time = None
                     
             except Exception as e:
-                error_str = str(e)
-                
-                # CRITICAL FIX: Handle NOGROUP error by recreating consumer group
-                if "NOGROUP" in error_str:
-                    logger.warning(f"[WORKER] Consumer group missing, recreating...")
-                    self._ensure_consumer_group(redis_client)
-                    time.sleep(0.1)  # Brief pause before retry
-                else:
-                    logger.error(f"[WORKER] Worker loop error: {e}")
-                    self._error_tracker.record_error(error_str)
-                    time.sleep(1)
+                logger.error(f"[WORKER] Worker loop error: {e}")
+                self._error_tracker.record_error(str(e))
+                time.sleep(1)
         
         # Drain remaining
         self._drain_worker(worker_id, redis_client, pending_events, pending_msg_ids)
@@ -793,42 +762,6 @@ def create_krnx(
 
 
 # ==============================================
-# TELEMETRY DATA CLASS
-# ==============================================
-
-@dataclass
-class RetrievalTelemetry:
-    """
-    Telemetry data for retrieval operations (Constitution 6.5).
-    
-    Captures metrics about event retrieval for app-layer analysis.
-    Kernel collects; app layer decides what to do with it.
-    """
-    workspace_id: str
-    user_id: str
-    query_type: str  # 'query', 'replay', 'get_event'
-    events_returned: int
-    latency_ms: float
-    source: str  # 'stm', 'ltm_warm', 'ltm_cold', 'mixed'
-    timestamp: float = None
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = time.time()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'workspace_id': self.workspace_id,
-            'user_id': self.user_id,
-            'query_type': self.query_type,
-            'events_returned': self.events_returned,
-            'latency_ms': round(self.latency_ms, 3),
-            'source': self.source,
-            'timestamp': self.timestamp
-        }
-
-
-# ==============================================
 # EXPORTS
 # ==============================================
 
@@ -839,5 +772,4 @@ __all__ = [
     'RedisUnavailableError',
     'WorkerMetrics',
     'ErrorTracker',
-    'RetrievalTelemetry',
 ]
