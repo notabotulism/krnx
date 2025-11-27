@@ -1,14 +1,34 @@
 """
-KRNX Controller - Pure Kernel v0.3.6 TURBO (NOGROUP Recovery + Metrics Fix)
+KRNX Controller - Pure Kernel v0.3.8 (Consistency Validation)
 
-CRITICAL FIX: Worker resilience and backpressure recovery
-Before: Stream deletion (e.g., in tests) caused NOGROUP errors, worker couldn't process
-After:  Worker recreates consumer group on NOGROUP error, proper recovery
+CRITICAL FIX: Validate workspace_id/user_id consistency between parameters and Event object
+Before: Parameters used for STM routing, Event object used for LTM storage → split-brain
+After:  Validation ensures they match, preventing silent data corruption
 
-Changes from v0.3.5:
-- FIX: Worker recreates consumer group when NOGROUP error occurs
-- FIX: More robust metrics calculation (handles missing stream/group)
-- FIX: Proper backpressure recovery after queue drains
+Changes from v0.3.7:
+- FIX: Validate workspace_id parameter matches event.workspace_id
+- FIX: Validate user_id parameter matches event.user_id  
+- FIX: Raise ValidationError on mismatch (fail-fast, prevent corruption)
+
+Previous fixes retained:
+- v0.3.7: XDEL after XACK for accurate queue metrics
+- v0.3.6: NOGROUP recovery, backpressure fixes
+- v0.3.5: Backpressure recovery improvements
+
+The split-brain problem:
+  write_event(workspace_id="A", user_id="X", event=Event(workspace_id="B", user_id="Y"))
+  
+  Before (silent corruption):
+  - STM routes to workspace:A:events stream
+  - STM stores in user:A:X:recent list  
+  - LTM stores with workspace_id="B", user_id="Y"
+  - Query workspace A → finds in STM, not in LTM
+  - Query workspace B → finds in LTM, not in STM
+  
+  After (fail-fast):
+  - ValidationError raised immediately
+  - No data written
+  - Developer fixes the bug
 """
 
 import time
@@ -39,6 +59,11 @@ class BackpressureError(Exception):
 
 class RedisUnavailableError(Exception):
     """Raised when Redis is unavailable"""
+    pass
+
+
+class ValidationError(Exception):
+    """Raised when event data is invalid or inconsistent"""
     pass
 
 
@@ -107,12 +132,42 @@ class ErrorTracker:
             return None
 
 
+# ==============================================
+# v0.3.7 FIX: XACK + XDEL HELPER
+# ==============================================
+
+def ack_and_delete(redis_client, stream_name: str, group_name: str, msg_ids: List[str]):
+    """
+    ACK and DELETE messages from stream in one pipeline.
+    
+    This is the CRITICAL FIX for Redis Streams cleanup:
+    - XACK removes from Pending Entries List (consumer group tracking)
+    - XDEL removes from the actual stream (makes XLEN accurate)
+    
+    Both are O(1) per message, pipelined = single roundtrip.
+    """
+    if not msg_ids:
+        return
+    
+    pipe = redis_client.pipeline()
+    pipe.xack(stream_name, group_name, *msg_ids)
+    pipe.xdel(stream_name, *msg_ids)
+    pipe.execute()
+
+
+# ==============================================
+# STREAM CONSTANTS
+# ==============================================
+
+LTM_STREAM_NAME = 'krnx:ltm:queue'
+LTM_GROUP_NAME = 'krnx-ltm-workers'
+
+
 class KRNXController:
     """
-    KRNX Kernel Controller v0.3.6 TURBO (NOGROUP Recovery + Metrics Fix)
+    KRNX Kernel Controller v0.3.8 (Consistency Validation)
     
-    CRITICAL FIX: Worker resilience and backpressure recovery.
-    Worker now recreates consumer group on NOGROUP error.
+    CRITICAL FIX: Validate workspace_id/user_id consistency.
     """
     
     def __init__(
@@ -140,7 +195,7 @@ class KRNXController:
         self.data_path = Path(data_path)
         self.data_path.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"[START] Initializing KRNX kernel v0.3.6 at {data_path}")
+        logger.info(f"[START] Initializing KRNX kernel v0.3.8 at {data_path}")
         
         # Settings
         self.max_queue_depth = max_queue_depth
@@ -197,7 +252,7 @@ class KRNXController:
         if enable_async_worker:
             self._start_ltm_worker()
         
-        logger.info(f"[OK] KRNX kernel v0.3.6 initialized")
+        logger.info(f"[OK] KRNX kernel v0.3.8 initialized")
         logger.info(f"   Backpressure: {enable_backpressure}")
         logger.info(f"   Max queue depth: {max_queue_depth}")
         logger.info(f"   Max lag: {max_lag_seconds}s")
@@ -221,7 +276,28 @@ class KRNXController:
         1. Always re-evaluate metrics before rejecting
         2. Use XPENDING for accurate queue depth
         3. Use first-entry for accurate lag calculation
+        
+        v0.3.8 FIX: Validate parameter/event consistency to prevent split-brain:
+        - workspace_id parameter must match event.workspace_id
+        - user_id parameter must match event.user_id
         """
+        # ==============================================
+        # CONSISTENCY VALIDATION (v0.3.8)
+        # Prevents split-brain between STM routing and LTM storage
+        # ==============================================
+        if event.workspace_id != workspace_id:
+            raise ValidationError(
+                f"workspace_id mismatch: parameter='{workspace_id}', "
+                f"event.workspace_id='{event.workspace_id}'. "
+                f"These must match to prevent data inconsistency."
+            )
+        if event.user_id != user_id:
+            raise ValidationError(
+                f"user_id mismatch: parameter='{user_id}', "
+                f"event.user_id='{event.user_id}'. "
+                f"These must match to prevent data inconsistency."
+            )
+        
         # ==============================================
         # FIXED BACKPRESSURE CHECK
         # Key change: Evaluate metrics BEFORE checking mode
@@ -317,7 +393,7 @@ class KRNXController:
             'event_id': event.event_id,
             'event_json': event.to_json()
         }
-        pipe.xadd('krnx:ltm:queue', ltm_data, maxlen=100000)
+        pipe.xadd(LTM_STREAM_NAME, ltm_data, maxlen=100000)
         
         # ===== JOB QUEUE (1 command, optional) =====
         if job_data:
@@ -347,55 +423,38 @@ class KRNXController:
         )
     
     # ==============================================
-    # WORKER METRICS (Fixed Calculation)
+    # WORKER METRICS (v0.3.7: Now accurate with XDEL)
     # ==============================================
     
     def get_worker_metrics(self) -> WorkerMetrics:
         """
         Get worker health metrics.
         
-        v0.3.6 FIX: Correct queue depth and lag calculation
-        - XPENDING 'pending' count is the ONLY accurate measure of unprocessed work
-        - When pending = 0, queue is fully processed regardless of stream length
-        - Lag only matters when there's pending work
+        v0.3.7: With XDEL fix, XLEN now accurately reflects unprocessed messages.
+        We can use either XPENDING or XLEN - they should match closely.
+        
+        Using XLEN is simpler and works even before consumer group exists.
         """
         redis_client = get_redis_client()
         
         try:
-            # Get queue depth from XPENDING (actual unprocessed messages)
+            # v0.3.7: With XDEL fix, XLEN = actual unprocessed messages
             queue_depth = 0
-            has_pending_info = False
-            
             try:
-                pending_info = redis_client.xpending('krnx:ltm:queue', 'krnx-ltm-workers')
-                if pending_info:
-                    has_pending_info = True
-                    # 'pending' is the count of delivered-but-not-ACK'd messages
-                    queue_depth = pending_info.get('pending', 0)
-                    
-                    # CRITICAL: If pending is 0, the queue is FULLY PROCESSED
-                    # regardless of how many messages are in the stream (XLEN)
-            except Exception as e:
-                # Consumer group doesn't exist yet - check stream length as fallback
-                if "NOGROUP" in str(e):
-                    try:
-                        # No consumer group = nothing processed = all messages are "pending"
-                        queue_depth = redis_client.xlen('krnx:ltm:queue')
-                    except Exception:
-                        queue_depth = 0
+                queue_depth = redis_client.xlen(LTM_STREAM_NAME)
+            except Exception:
+                pass
             
-            # Calculate lag - only meaningful when there's pending work
+            # Calculate lag
             lag_seconds = 0.0
             
-            # CRITICAL: If queue is empty (no pending), lag is 0
             if queue_depth == 0:
                 lag_seconds = 0.0
             else:
                 try:
-                    stream_info = redis_client.xinfo_stream('krnx:ltm:queue')
-                    stream_length = stream_info.get('length', 0)
+                    stream_info = redis_client.xinfo_stream(LTM_STREAM_NAME)
                     
-                    if stream_length > 0 and 'first-entry' in stream_info:
+                    if stream_info.get('length', 0) > 0 and 'first-entry' in stream_info:
                         first_entry = stream_info.get('first-entry')
                         if first_entry and len(first_entry) >= 1:
                             msg_id = first_entry[0]
@@ -407,7 +466,7 @@ class KRNXController:
                             now_ms = int(time.time() * 1000)
                             lag_seconds = max(0, (now_ms - msg_timestamp_ms) / 1000.0)
                 except Exception:
-                    lag_seconds = 0.0
+                    pass
             
             error_info = self._error_tracker.get_last_error()
             
@@ -434,7 +493,7 @@ class KRNXController:
             )
     
     # ==============================================
-    # ASYNC WORKER (with Stream Trimming)
+    # ASYNC WORKER (v0.3.7 with XDEL)
     # ==============================================
     
     def _start_ltm_worker(self):
@@ -457,7 +516,7 @@ class KRNXController:
     def _ensure_consumer_group(self, redis_client):
         """Ensure consumer group exists (call before XREADGROUP operations)."""
         try:
-            redis_client.xgroup_create('krnx:ltm:queue', 'krnx-ltm-workers', id='0', mkstream=True)
+            redis_client.xgroup_create(LTM_STREAM_NAME, LTM_GROUP_NAME, id='0', mkstream=True)
             logger.debug("[WORKER] Consumer group created/verified")
         except Exception as e:
             if "BUSYGROUP" not in str(e):
@@ -466,11 +525,12 @@ class KRNXController:
     
     def _ltm_worker_loop(self):
         """
-        LTM worker with batch accumulation and stream trimming.
+        LTM worker with batch accumulation and PROPER stream cleanup.
         
-        v0.3.6 FIX: 
-        - Handle NOGROUP errors by recreating consumer group
-        - This allows recovery after stream deletion (e.g., in tests)
+        v0.3.7 FIX: 
+        - Add XDEL after XACK to remove processed messages from stream
+        - This makes XLEN accurate for backpressure calculations
+        - Pipelined XACK+XDEL = no additional round trips
         """
         worker_id = f"worker-{int(time.time())}"
         redis_client = get_redis_client()
@@ -478,7 +538,7 @@ class KRNXController:
         # Ensure consumer group exists
         self._ensure_consumer_group(redis_client)
         
-        logger.info(f"[WORKER] LTM worker '{worker_id}' started (v0.3.6 with NOGROUP recovery)")
+        logger.info(f"[WORKER] LTM worker '{worker_id}' started (v0.3.7 with XDEL fix)")
         
         # Batch accumulation
         pending_events = []
@@ -490,9 +550,9 @@ class KRNXController:
         while self._worker_running:
             try:
                 messages = redis_client.xreadgroup(
-                    groupname='krnx-ltm-workers',
+                    groupname=LTM_GROUP_NAME,
                     consumername=worker_id,
-                    streams={'krnx:ltm:queue': '>'},
+                    streams={LTM_STREAM_NAME: '>'},
                     count=100,
                     block=self.worker_block_ms
                 )
@@ -511,8 +571,8 @@ class KRNXController:
                                         batch_start_time = time.time()
                                 except Exception as e:
                                     logger.error(f"[WORKER] Parse error: {e}")
-                                    # ACK bad messages to prevent infinite retry
-                                    redis_client.xack('krnx:ltm:queue', 'krnx-ltm-workers', msg_id)
+                                    # v0.3.7 FIX: ACK+DEL bad messages to prevent infinite retry
+                                    ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, [msg_id])
                 
                 # Check if we should flush
                 should_flush = False
@@ -528,14 +588,10 @@ class KRNXController:
                         stored_count = self.ltm.store_events_batch(pending_events)
                         self._worker_metrics['messages_processed'] += stored_count
                         
-                        # ACK all messages
+                        # v0.3.7 FIX: ACK + XDEL in one pipeline
+                        # This removes messages from BOTH PEL and stream
                         if pending_msg_ids:
-                            redis_client.xack('krnx:ltm:queue', 'krnx-ltm-workers', *pending_msg_ids)
-                            
-                            # CRITICAL FIX: XTRIM to actually remove processed messages
-                            # This makes XLEN/queue depth reflect true state
-                            # Use MINID to trim all entries older than oldest pending
-                            redis_client.xtrim('krnx:ltm:queue', maxlen=50000, approximate=True)
+                            ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, pending_msg_ids)
                         
                         logger.debug(f"[WORKER] Stored batch of {stored_count} events")
                         
@@ -546,7 +602,8 @@ class KRNXController:
                         for i, event in enumerate(pending_events):
                             try:
                                 self.ltm.store_event(event)
-                                redis_client.xack('krnx:ltm:queue', 'krnx-ltm-workers', pending_msg_ids[i])
+                                # v0.3.7 FIX: ACK+DEL individual message
+                                ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, [pending_msg_ids[i]])
                                 self._worker_metrics['messages_processed'] += 1
                             except Exception as e2:
                                 logger.error(f"[FAIL] Event {event.event_id}: {e2}")
@@ -572,15 +629,17 @@ class KRNXController:
         self._drain_worker(worker_id, redis_client, pending_events, pending_msg_ids)
     
     def _drain_worker(self, worker_id: str, redis_client, pending_events: list, pending_msg_ids: list):
-        """Drain worker on shutdown."""
+        """
+        Drain worker on shutdown with v0.3.7 XDEL fix.
+        """
         logger.info(f"[DRAIN] Worker draining {len(pending_events)} accumulated events...")
         
         if pending_events:
             try:
                 stored_count = self.ltm.store_events_batch(pending_events)
                 if pending_msg_ids:
-                    redis_client.xack('krnx:ltm:queue', 'krnx-ltm-workers', *pending_msg_ids)
-                    redis_client.xtrim('krnx:ltm:queue', maxlen=50000, approximate=True)
+                    # v0.3.7 FIX: ACK + XDEL
+                    ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, pending_msg_ids)
                 logger.info(f"[DRAIN] Stored {stored_count} accumulated events")
             except Exception as e:
                 logger.error(f"[DRAIN] Failed to store accumulated events: {e}")
@@ -593,9 +652,9 @@ class KRNXController:
                 return
             
             messages = redis_client.xreadgroup(
-                groupname='krnx-ltm-workers',
+                groupname=LTM_GROUP_NAME,
                 consumername=worker_id,
-                streams={'krnx:ltm:queue': '>'},
+                streams={LTM_STREAM_NAME: '>'},
                 count=1000,
                 block=None
             )
@@ -619,8 +678,8 @@ class KRNXController:
                     try:
                         self.ltm.store_events_batch(events_to_store)
                         if msg_ids_to_ack:
-                            redis_client.xack('krnx:ltm:queue', 'krnx-ltm-workers', *msg_ids_to_ack)
-                            redis_client.xtrim('krnx:ltm:queue', maxlen=50000, approximate=True)
+                            # v0.3.7 FIX: ACK + XDEL
+                            ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, msg_ids_to_ack)
                         logger.info(f"[DRAIN] Stored {len(events_to_store)} final events")
                     except Exception as e:
                         logger.error(f"[DRAIN] Failed to store final batch: {e}")
@@ -745,8 +804,18 @@ class KRNXController:
     # LIFECYCLE
     # ==============================================
     
-    def shutdown(self, timeout: float = 10.0):
-        """Graceful shutdown with drain."""
+    def shutdown(self, timeout: float = 10.0, close_connection_pool: bool = False):
+        """
+        Graceful shutdown with drain.
+        
+        Args:
+            timeout: Max seconds to wait for worker to drain
+            close_connection_pool: If True, also close the global Redis pool.
+                                   Default False because the pool is a shared
+                                   resource - other controllers may still need it.
+                                   Only set True if this is the LAST controller
+                                   in the process.
+        """
         logger.info("[STOP] Shutting down KRNX kernel...")
         
         self._worker_running = False
@@ -757,13 +826,18 @@ class KRNXController:
             self._ltm_worker_thread.join(timeout=2.0)
         
         self.ltm.close()
-        close_pool()
+        
+        # Only close pool if explicitly requested
+        # Pool is a shared singleton - closing it affects ALL controllers
+        if close_connection_pool:
+            close_pool()
+            logger.info("[OK] Connection pool closed")
         
         logger.info("[OK] KRNX kernel shutdown complete")
     
     def close(self):
-        """Alias for shutdown()."""
-        self.shutdown()
+        """Alias for shutdown() - does NOT close connection pool."""
+        self.shutdown(close_connection_pool=False)
     
     def __enter__(self):
         return self
@@ -840,4 +914,5 @@ __all__ = [
     'WorkerMetrics',
     'ErrorTracker',
     'RetrievalTelemetry',
+    'ack_and_delete',  # Export helper for use in other modules
 ]

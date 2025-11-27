@@ -1,7 +1,9 @@
 """
-KRNX Compute - Job Queue (Redis Streams)
+KRNX Compute - Job Queue (Redis Streams) v0.3.7
 
 Redis-based job queue using the PROVEN pattern from LTM worker.
+
+v0.3.7 FIX: Add XDEL after XACK in complete() to properly remove processed messages.
 
 Why Redis instead of SQLite:
 - Multi-producer safe (50 threads can write simultaneously)
@@ -12,7 +14,7 @@ Why Redis instead of SQLite:
 Pattern (copied from working LTM queue):
 - Producer: Direct XADD (no batching)
 - Consumer: XREADGROUP with batching
-- Durability: XACK after processing
+- Durability: XACK + XDEL after processing (v0.3.7 fix)
 
 Usage:
     from chillbot.compute.queue import JobQueue, JobType
@@ -35,7 +37,7 @@ Usage:
     jobs = queue.dequeue_batch(count=10, block_ms=100)
     for job in jobs:
         # process...
-        queue.complete(job.job_id)
+        queue.complete(job)  # Now properly removes from stream
 """
 
 import json
@@ -111,12 +113,12 @@ class Job:
 
 class JobQueue:
     """
-    Redis Streams-based job queue.
+    Redis Streams-based job queue v0.3.7.
     
     Follows the PROVEN pattern from LTM worker:
     - Producer: Direct XADD (fast, non-blocking)
     - Consumer: XREADGROUP with batching
-    - Durability: Consumer groups + XACK
+    - Durability: Consumer groups + XACK + XDEL (v0.3.7 fix)
     
     This is the SAME architecture that successfully handles
     50-thread LTM writes. Tested, proven, production-ready.
@@ -144,7 +146,7 @@ class JobQueue:
         # Create consumer group (if not exists)
         self._ensure_group()
         
-        logger.info(f"[QUEUE] Initialized Redis job queue: {stream_name}")
+        logger.info(f"[QUEUE] Initialized Redis job queue v0.3.7: {stream_name}")
     
     def _ensure_group(self):
         """Create consumer group if it doesn't exist."""
@@ -316,29 +318,32 @@ class JobQueue:
     
     def complete(self, job: Job):
         """
-        Mark job as completed (ACK message).
+        Mark job as completed (ACK + DELETE message).
         
-        Pattern from LTM worker: XACK after successful processing.
+        v0.3.7 FIX: XACK only removes from PEL, XDEL removes from stream.
+        Both are needed for proper cleanup and accurate XLEN.
+        
+        Pattern: Pipeline XACK + XDEL = one roundtrip, stream stays clean.
         """
         if job._message_id:
             try:
-                self.redis.xack(
-                    self.stream_name,
-                    self.group_name,
-                    job._message_id
-                )
+                # v0.3.7 FIX: Pipeline both commands for efficiency
+                pipe = self.redis.pipeline()
+                pipe.xack(self.stream_name, self.group_name, job._message_id)
+                pipe.xdel(self.stream_name, job._message_id)
+                pipe.execute()
             except Exception as e:
-                logger.error(f"[QUEUE] ACK failed for {job.job_id}: {e}")
+                logger.error(f"[QUEUE] ACK/DEL failed for {job.job_id}: {e}")
     
     def fail(self, job: Job, error: str):
         """
-        Mark job as failed (log and ACK to prevent retry loop).
+        Mark job as failed (log and ACK+DEL to prevent retry loop).
         
-        For now, we just ACK to remove from pending.
-        Future: Could write to dead-letter queue.
+        For now, we just ACK+DEL to remove from stream.
+        Future: Could write to dead-letter queue before deletion.
         """
         logger.error(f"[QUEUE] Job {job.job_id} failed: {error}")
-        self.complete(job)  # ACK to prevent infinite retries
+        self.complete(job)  # Uses the updated complete() with XDEL
     
     # ==============================================
     # MONITORING
@@ -353,7 +358,11 @@ class JobQueue:
             return 0
     
     def get_stream_length(self) -> int:
-        """Get total stream length."""
+        """
+        Get total stream length.
+        
+        v0.3.7: With XDEL fix, this now accurately reflects unprocessed jobs.
+        """
         try:
             return self.redis.xlen(self.stream_name)
         except Exception:
@@ -381,7 +390,12 @@ class JobQueue:
     # ==============================================
     
     def trim(self, max_length: Optional[int] = None):
-        """Trim stream to max length."""
+        """
+        Trim stream to max length.
+        
+        Note: With v0.3.7 XDEL fix, this is less important as processed
+        messages are deleted immediately. But keep for safety cap.
+        """
         length = max_length or self.max_length
         try:
             self.redis.xtrim(self.stream_name, maxlen=length, approximate=True)
