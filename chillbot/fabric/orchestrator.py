@@ -12,6 +12,12 @@ NEW: Metadata enrichment pipeline
 - Entity extraction
 - Retention signals
 
+FIX v3: Synchronous embedding fallback
+- When embeddings + vectors are available but job_queue is None,
+  embedding and indexing happens inline in remember()
+- This ensures vectors work without requiring async job infrastructure
+- The async job_queue path remains available as an optimization
+
 Expected improvement: 443 events/sec → 1500+ events/sec
 """
 
@@ -80,6 +86,8 @@ class MemoryFabric:
     
     Uses single-pipeline writes for 3x throughput.
     Includes metadata enrichment for intelligent memory.
+    
+    FIX v3: Supports synchronous embedding when job_queue is None.
     """
     
     def __init__(
@@ -121,11 +129,15 @@ class MemoryFabric:
         # Track previous events per workspace:user for temporal enrichment
         self._previous_events: Dict[str, Any] = {}
         
+        # Track which collections have been initialized (for sync embedding)
+        self._initialized_collections: Dict[str, int] = {}  # workspace_id -> dimension
+        
         self._stats = {
             "remembers": 0,
             "recalls": 0,
             "contexts_built": 0,
             "enrichments": 0,
+            "sync_embeds": 0,  # NEW: Track sync embeddings
         }
         
         logger.info(f"[FABRIC] Initialized TURBO (workspace={default_workspace}, auto_embed={auto_embed}, auto_enrich={auto_enrich})")
@@ -168,6 +180,9 @@ class MemoryFabric:
         After:  1 Redis round-trip (all combined)
         
         NEW: Automatic metadata enrichment (temporal, salience, relations, entities)
+        
+        FIX v3: When auto_embed=True and embeddings+vectors are available but
+        job_queue is None, embedding happens synchronously inline.
         """
         workspace_id = workspace_id or self.default_workspace
         user_id = user_id or "default"
@@ -230,7 +245,7 @@ class MemoryFabric:
             except Exception as e:
                 logger.warning(f"[FABRIC] Enrichment failed for {event_id}: {e}")
         
-        # Build job data if auto_embed is enabled
+        # Build job data if auto_embed is enabled AND we have a job queue
         job_data = None
         if self.auto_embed and self.job_queue:
             text = self._extract_text(content_dict)
@@ -317,6 +332,52 @@ class MemoryFabric:
         else:
             raise RuntimeError("No kernel configured")
         
+        # ==============================================
+        # FIX v3: SYNCHRONOUS EMBEDDING FALLBACK
+        # When auto_embed is enabled but no job_queue exists,
+        # embed and index synchronously using embeddings + vectors
+        # ==============================================
+        logger.info(f"[FABRIC] Sync embed check: auto_embed={self.auto_embed}, job_queue={self.job_queue is not None}, embeddings={self.embeddings is not None}, vectors={self.vectors is not None}")
+        
+        if self.auto_embed and not self.job_queue and self.embeddings and self.vectors:
+            text = self._extract_text(content_dict)
+            logger.info(f"[FABRIC] Sync embed: extracted text={text[:50] if text else None}...")
+            if text:
+                try:
+                    # Generate embedding
+                    logger.info(f"[FABRIC] Generating embedding for {event_id}...")
+                    embedding = self.embeddings.embed(text)
+                    logger.info(f"[FABRIC] Generated embedding dim={len(embedding)}")
+                    
+                    # Ensure collection exists (critical for first event!)
+                    dimension = len(embedding)
+                    if workspace_id not in self._initialized_collections:
+                        logger.info(f"[FABRIC] Creating collection for workspace={workspace_id}, dim={dimension}")
+                        self.vectors.ensure_collection(workspace_id, dimension)
+                        self._initialized_collections[workspace_id] = dimension
+                        logger.info(f"[FABRIC] Collection created for {workspace_id}")
+                    
+                    # Index the vector
+                    logger.info(f"[FABRIC] Indexing vector {event_id} in workspace={workspace_id}")
+                    self.vectors.index(
+                        workspace_id=workspace_id,
+                        id=event_id,
+                        vector=embedding,
+                        payload={
+                            "event_id": event_id,
+                            "text_preview": text[:500],  # Store preview for recall
+                            "user_id": user_id,
+                            "channel": channel,
+                            "timestamp": timestamp,
+                        }
+                    )
+                    
+                    self._stats["sync_embeds"] += 1
+                    logger.info(f"[FABRIC] ✓ Sync embedded and indexed {event_id}")
+                    
+                except Exception as e:
+                    logger.error(f"[FABRIC] ✗ Sync embedding failed for {event_id}: {e}", exc_info=True)
+        
         self._stats["remembers"] += 1
         return event_id
     
@@ -366,9 +427,9 @@ class MemoryFabric:
                 query_embedding = self.embeddings.embed(query)
                 matches = self.vectors.search(
                     workspace_id=workspace_id,
-                    query_vector=query_embedding,
-                    limit=top_k,
-                    min_score=min_score,
+                    vector=query_embedding,
+                    top_k=top_k,
+                    score_threshold=min_score,
                 )
                 
                 for match in matches:
@@ -615,6 +676,8 @@ class MemoryFabric:
             "auto_embed": self.auto_embed,
             "auto_enrich": self.auto_enrich,
             "turbo_enabled": hasattr(self.kernel, 'write_event_turbo') if self.kernel else False,
+            "sync_embed_mode": self.auto_embed and not self.job_queue and self.embeddings is not None,
+            "initialized_collections": list(self._initialized_collections.keys()),
         }
         
         if self._enricher:
@@ -630,7 +693,11 @@ class MemoryFabric:
         
         # Clear previous events cache
         self._previous_events.clear()
+        
+        # Clear initialized collections tracking
+        self._initialized_collections.clear()
     
     def __repr__(self) -> str:
         mode = "local" if self.kernel else ("remote" if self.kernel_url else "none")
-        return f"MemoryFabric(mode={mode}, workspace={self.default_workspace}, turbo=True, enrich={self.auto_enrich})"
+        sync_mode = "sync" if (self.auto_embed and not self.job_queue and self.embeddings) else "async"
+        return f"MemoryFabric(mode={mode}, workspace={self.default_workspace}, turbo=True, enrich={self.auto_enrich}, embed={sync_mode})"

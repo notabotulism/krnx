@@ -1,34 +1,18 @@
 """
-KRNX Controller - Pure Kernel v0.3.8 (Consistency Validation)
+KRNX Controller - Pure Kernel v0.4.0 (Hash Chain + Temporal Replay)
 
-CRITICAL FIX: Validate workspace_id/user_id consistency between parameters and Event object
-Before: Parameters used for STM routing, Event object used for LTM storage → split-brain
-After:  Validation ensures they match, preventing silent data corruption
-
-Changes from v0.3.7:
-- FIX: Validate workspace_id parameter matches event.workspace_id
-- FIX: Validate user_id parameter matches event.user_id  
-- FIX: Raise ValidationError on mismatch (fail-fast, prevent corruption)
+NEW IN v0.4.0:
+- get_event_by_hash() - retrieve event by computed hash
+- verify_hash_chain() - verify entire hash chain integrity
+- replay_to_timestamp() - temporal replay for time-travel queries
+- verify_event_hash() - verify single event's hash
 
 Previous fixes retained:
+- v0.3.10: Single source of truth for queue_depth and lag_seconds
+- v0.3.9: Backpressure hysteresis (25% gap)
+- v0.3.8: Validate workspace_id/user_id consistency
 - v0.3.7: XDEL after XACK for accurate queue metrics
 - v0.3.6: NOGROUP recovery, backpressure fixes
-- v0.3.5: Backpressure recovery improvements
-
-The split-brain problem:
-  write_event(workspace_id="A", user_id="X", event=Event(workspace_id="B", user_id="Y"))
-  
-  Before (silent corruption):
-  - STM routes to workspace:A:events stream
-  - STM stores in user:A:X:recent list  
-  - LTM stores with workspace_id="B", user_id="Y"
-  - Query workspace A → finds in STM, not in LTM
-  - Query workspace B → finds in LTM, not in STM
-  
-  After (fail-fast):
-  - ValidationError raised immediately
-  - No data written
-  - Developer fixes the bug
 """
 
 import time
@@ -165,9 +149,13 @@ LTM_GROUP_NAME = 'krnx-ltm-workers'
 
 class KRNXController:
     """
-    KRNX Kernel Controller v0.3.8 (Consistency Validation)
+    KRNX Kernel Controller v0.4.0 (Hash Chain + Temporal Replay)
     
-    CRITICAL FIX: Validate workspace_id/user_id consistency.
+    NEW METHODS:
+    - get_event_by_hash() - O(1) hash lookup
+    - verify_hash_chain() - verify workspace:user chain
+    - verify_event_hash() - verify single event
+    - replay_to_timestamp() - temporal replay
     """
     
     def __init__(
@@ -186,6 +174,7 @@ class KRNXController:
         snapshot_interval_hours: int = 168,
         max_queue_depth: int = 50000,
         max_lag_seconds: float = 30.0,
+        backpressure_recovery_ratio: float = 0.75,
         enable_hash_chain: bool = False,
         enable_telemetry: bool = False,
         ltm_batch_size: int = 100,
@@ -195,7 +184,7 @@ class KRNXController:
         self.data_path = Path(data_path)
         self.data_path.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"[START] Initializing KRNX kernel v0.3.8 at {data_path}")
+        logger.info(f"[START] Initializing KRNX kernel v0.4.0 at {data_path}")
         
         # Settings
         self.max_queue_depth = max_queue_depth
@@ -205,6 +194,11 @@ class KRNXController:
         self.enable_telemetry = enable_telemetry
         self.worker_block_ms = worker_block_ms
         self.worker_batch_size = ltm_batch_size
+        
+        # v0.3.9: Hysteresis configuration
+        self.backpressure_recovery_ratio = backpressure_recovery_ratio
+        self.recovery_queue_depth = int(max_queue_depth * backpressure_recovery_ratio)
+        self.recovery_lag_seconds = max_lag_seconds * backpressure_recovery_ratio
         
         # Metrics
         self._worker_metrics = {
@@ -224,7 +218,7 @@ class KRNXController:
         self._backpressure_mode = False
         self._backpressure_lock = threading.Lock()
         self._last_backpressure_check = 0.0
-        self._backpressure_check_interval = 0.1  # Check at most every 100ms
+        self._backpressure_check_interval = 0.1
         
         # Configure global connection pool
         configure_pool(
@@ -252,13 +246,14 @@ class KRNXController:
         if enable_async_worker:
             self._start_ltm_worker()
         
-        logger.info(f"[OK] KRNX kernel v0.3.8 initialized")
+        logger.info(f"[OK] KRNX kernel v0.4.0 initialized")
         logger.info(f"   Backpressure: {enable_backpressure}")
-        logger.info(f"   Max queue depth: {max_queue_depth}")
-        logger.info(f"   Max lag: {max_lag_seconds}s")
+        logger.info(f"   Max queue depth: {max_queue_depth} (recover at {self.recovery_queue_depth})")
+        logger.info(f"   Max lag: {max_lag_seconds}s (recover at {self.recovery_lag_seconds:.1f}s)")
+        logger.info(f"   Hash chain: {enable_hash_chain}")
     
     # ==============================================
-    # TURBO WRITE PATH (with Fixed Backpressure)
+    # TURBO WRITE PATH (v0.3.9: Hysteresis Backpressure)
     # ==============================================
     
     def write_event_turbo(
@@ -272,18 +267,11 @@ class KRNXController:
         """
         TURBO: Write event using SINGLE Redis pipeline.
         
-        v0.3.5 FIX: Backpressure now recovers properly:
-        1. Always re-evaluate metrics before rejecting
-        2. Use XPENDING for accurate queue depth
-        3. Use first-entry for accurate lag calculation
-        
-        v0.3.8 FIX: Validate parameter/event consistency to prevent split-brain:
-        - workspace_id parameter must match event.workspace_id
-        - user_id parameter must match event.user_id
+        v0.3.9 FIX: Backpressure hysteresis prevents oscillation.
+        v0.3.8 FIX: Validate parameter/event consistency.
         """
         # ==============================================
         # CONSISTENCY VALIDATION (v0.3.8)
-        # Prevents split-brain between STM routing and LTM storage
         # ==============================================
         if event.workspace_id != workspace_id:
             raise ValidationError(
@@ -299,47 +287,55 @@ class KRNXController:
             )
         
         # ==============================================
-        # FIXED BACKPRESSURE CHECK
-        # Key change: Evaluate metrics BEFORE checking mode
+        # BACKPRESSURE CHECK (v0.3.9: WITH HYSTERESIS)
         # ==============================================
         if self.enable_backpressure:
             now = time.time()
             should_check = False
             
             with self._backpressure_lock:
-                # Time-based check interval
                 if (now - self._last_backpressure_check) > self._backpressure_check_interval:
                     should_check = True
                     self._last_backpressure_check = now
-                # CRITICAL FIX: If in backpressure mode, ALWAYS check to allow recovery
                 elif self._backpressure_mode:
                     should_check = True
                     self._last_backpressure_check = now
             
             if should_check:
-                # Get fresh metrics OUTSIDE the lock
                 try:
                     metrics = self.get_worker_metrics()
-                    new_mode = (
-                        metrics.queue_depth > self.max_queue_depth or 
-                        metrics.lag_seconds > self.max_lag_seconds
-                    )
                     
-                    # Update mode
                     with self._backpressure_lock:
                         old_mode = self._backpressure_mode
+                        
+                        if old_mode:
+                            new_mode = (
+                                metrics.queue_depth > self.recovery_queue_depth or
+                                metrics.lag_seconds > self.recovery_lag_seconds
+                            )
+                        else:
+                            new_mode = (
+                                metrics.queue_depth > self.max_queue_depth or
+                                metrics.lag_seconds > self.max_lag_seconds
+                            )
+                        
                         self._backpressure_mode = new_mode
                         
-                        # Log state transitions
                         if old_mode and not new_mode:
-                            logger.info(f"[BP] Backpressure RECOVERED (depth={metrics.queue_depth}, lag={metrics.lag_seconds:.2f}s)")
+                            logger.info(
+                                f"[BP] Backpressure RECOVERED "
+                                f"(depth={metrics.queue_depth}<={self.recovery_queue_depth}, "
+                                f"lag={metrics.lag_seconds:.2f}s<={self.recovery_lag_seconds:.1f}s)"
+                            )
                         elif not old_mode and new_mode:
-                            logger.warning(f"[BP] Backpressure ENGAGED (depth={metrics.queue_depth}, lag={metrics.lag_seconds:.2f}s)")
+                            logger.warning(
+                                f"[BP] Backpressure ENGAGED "
+                                f"(depth={metrics.queue_depth}>{self.max_queue_depth} or "
+                                f"lag={metrics.lag_seconds:.2f}s>{self.max_lag_seconds}s)"
+                            )
                 except Exception as e:
                     logger.debug(f"[BP] Metrics check failed: {e}")
-                    # On error, don't change mode
             
-            # NOW check mode (after potential update)
             with self._backpressure_lock:
                 if self._backpressure_mode:
                     raise BackpressureError("System under load")
@@ -423,48 +419,38 @@ class KRNXController:
         )
     
     # ==============================================
-    # WORKER METRICS (v0.3.7: Now accurate with XDEL)
+    # WORKER METRICS (v0.3.10: Atomic read)
     # ==============================================
     
     def get_worker_metrics(self) -> WorkerMetrics:
         """
         Get worker health metrics.
         
-        v0.3.7: With XDEL fix, XLEN now accurately reflects unprocessed messages.
-        We can use either XPENDING or XLEN - they should match closely.
-        
-        Using XLEN is simpler and works even before consumer group exists.
+        v0.3.10: Single source of truth fix.
         """
         redis_client = get_redis_client()
         
         try:
-            # v0.3.7: With XDEL fix, XLEN = actual unprocessed messages
             queue_depth = 0
-            try:
-                queue_depth = redis_client.xlen(LTM_STREAM_NAME)
-            except Exception:
-                pass
-            
-            # Calculate lag
             lag_seconds = 0.0
             
-            if queue_depth == 0:
-                lag_seconds = 0.0
-            else:
+            try:
+                stream_info = redis_client.xinfo_stream(LTM_STREAM_NAME)
+                queue_depth = stream_info.get('length', 0)
+                
+                if queue_depth > 0 and 'first-entry' in stream_info:
+                    first_entry = stream_info.get('first-entry')
+                    if first_entry and len(first_entry) >= 1:
+                        msg_id = first_entry[0]
+                        if isinstance(msg_id, bytes):
+                            msg_id = msg_id.decode('utf-8')
+                        
+                        msg_timestamp_ms = int(msg_id.split('-')[0])
+                        now_ms = int(time.time() * 1000)
+                        lag_seconds = max(0, (now_ms - msg_timestamp_ms) / 1000.0)
+            except Exception:
                 try:
-                    stream_info = redis_client.xinfo_stream(LTM_STREAM_NAME)
-                    
-                    if stream_info.get('length', 0) > 0 and 'first-entry' in stream_info:
-                        first_entry = stream_info.get('first-entry')
-                        if first_entry and len(first_entry) >= 1:
-                            msg_id = first_entry[0]
-                            if isinstance(msg_id, bytes):
-                                msg_id = msg_id.decode('utf-8')
-                            
-                            # Extract timestamp from message ID
-                            msg_timestamp_ms = int(msg_id.split('-')[0])
-                            now_ms = int(time.time() * 1000)
-                            lag_seconds = max(0, (now_ms - msg_timestamp_ms) / 1000.0)
+                    queue_depth = redis_client.xlen(LTM_STREAM_NAME)
                 except Exception:
                     pass
             
@@ -514,33 +500,23 @@ class KRNXController:
         logger.info("[OK] LTM worker started")
     
     def _ensure_consumer_group(self, redis_client):
-        """Ensure consumer group exists (call before XREADGROUP operations)."""
+        """Ensure consumer group exists."""
         try:
             redis_client.xgroup_create(LTM_STREAM_NAME, LTM_GROUP_NAME, id='0', mkstream=True)
             logger.debug("[WORKER] Consumer group created/verified")
         except Exception as e:
             if "BUSYGROUP" not in str(e):
-                # Only log if it's not "group already exists"
                 logger.debug(f"[WORKER] Consumer group check: {e}")
     
     def _ltm_worker_loop(self):
-        """
-        LTM worker with batch accumulation and PROPER stream cleanup.
-        
-        v0.3.7 FIX: 
-        - Add XDEL after XACK to remove processed messages from stream
-        - This makes XLEN accurate for backpressure calculations
-        - Pipelined XACK+XDEL = no additional round trips
-        """
+        """LTM worker with batch accumulation."""
         worker_id = f"worker-{int(time.time())}"
         redis_client = get_redis_client()
         
-        # Ensure consumer group exists
         self._ensure_consumer_group(redis_client)
         
-        logger.info(f"[WORKER] LTM worker '{worker_id}' started (v0.3.7 with XDEL fix)")
+        logger.info(f"[WORKER] LTM worker '{worker_id}' started (v0.4.0)")
         
-        # Batch accumulation
         pending_events = []
         pending_msg_ids = []
         batch_start_time = None
@@ -571,10 +547,8 @@ class KRNXController:
                                         batch_start_time = time.time()
                                 except Exception as e:
                                     logger.error(f"[WORKER] Parse error: {e}")
-                                    # v0.3.7 FIX: ACK+DEL bad messages to prevent infinite retry
                                     ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, [msg_id])
                 
-                # Check if we should flush
                 should_flush = False
                 if pending_events:
                     if len(pending_events) >= batch_size:
@@ -584,12 +558,9 @@ class KRNXController:
                 
                 if should_flush and pending_events:
                     try:
-                        # Store batch to LTM
                         stored_count = self.ltm.store_events_batch(pending_events)
                         self._worker_metrics['messages_processed'] += stored_count
                         
-                        # v0.3.7 FIX: ACK + XDEL in one pipeline
-                        # This removes messages from BOTH PEL and stream
                         if pending_msg_ids:
                             ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, pending_msg_ids)
                         
@@ -598,11 +569,9 @@ class KRNXController:
                     except Exception as e:
                         logger.error(f"[WORKER] Batch store failed: {e}")
                         self._error_tracker.record_error(str(e))
-                        # Store events individually as fallback
                         for i, event in enumerate(pending_events):
                             try:
                                 self.ltm.store_event(event)
-                                # v0.3.7 FIX: ACK+DEL individual message
                                 ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, [pending_msg_ids[i]])
                                 self._worker_metrics['messages_processed'] += 1
                             except Exception as e2:
@@ -615,36 +584,30 @@ class KRNXController:
             except Exception as e:
                 error_str = str(e)
                 
-                # CRITICAL FIX: Handle NOGROUP error by recreating consumer group
                 if "NOGROUP" in error_str:
                     logger.warning(f"[WORKER] Consumer group missing, recreating...")
                     self._ensure_consumer_group(redis_client)
-                    time.sleep(0.1)  # Brief pause before retry
+                    time.sleep(0.1)
                 else:
                     logger.error(f"[WORKER] Worker loop error: {e}")
                     self._error_tracker.record_error(error_str)
                     time.sleep(1)
         
-        # Drain remaining
         self._drain_worker(worker_id, redis_client, pending_events, pending_msg_ids)
     
     def _drain_worker(self, worker_id: str, redis_client, pending_events: list, pending_msg_ids: list):
-        """
-        Drain worker on shutdown with v0.3.7 XDEL fix.
-        """
+        """Drain worker on shutdown."""
         logger.info(f"[DRAIN] Worker draining {len(pending_events)} accumulated events...")
         
         if pending_events:
             try:
                 stored_count = self.ltm.store_events_batch(pending_events)
                 if pending_msg_ids:
-                    # v0.3.7 FIX: ACK + XDEL
                     ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, pending_msg_ids)
                 logger.info(f"[DRAIN] Stored {stored_count} accumulated events")
             except Exception as e:
                 logger.error(f"[DRAIN] Failed to store accumulated events: {e}")
         
-        # Final drain from Redis
         try:
             if not self.ltm.db:
                 logger.info("[DRAIN] Skipping Redis drain - LTM already closed")
@@ -678,7 +641,6 @@ class KRNXController:
                     try:
                         self.ltm.store_events_batch(events_to_store)
                         if msg_ids_to_ack:
-                            # v0.3.7 FIX: ACK + XDEL
                             ack_and_delete(redis_client, LTM_STREAM_NAME, LTM_GROUP_NAME, msg_ids_to_ack)
                         logger.info(f"[DRAIN] Stored {len(events_to_store)} final events")
                     except Exception as e:
@@ -699,32 +661,38 @@ class KRNXController:
     # ==============================================
     
     def reset_backpressure(self):
-        """
-        Manually reset backpressure state.
-        Use this in tests or for emergency recovery.
-        """
+        """Manually reset backpressure state."""
         with self._backpressure_lock:
             self._backpressure_mode = False
             self._last_backpressure_check = 0.0
         logger.info("[BP] Backpressure manually reset")
     
     def force_backpressure_check(self) -> bool:
-        """
-        Force an immediate backpressure re-evaluation.
-        Returns the new backpressure state.
-        """
+        """Force an immediate backpressure re-evaluation."""
         try:
             metrics = self.get_worker_metrics()
-            new_mode = (
-                metrics.queue_depth > self.max_queue_depth or 
-                metrics.lag_seconds > self.max_lag_seconds
-            )
             
             with self._backpressure_lock:
+                old_mode = self._backpressure_mode
+                
+                if old_mode:
+                    new_mode = (
+                        metrics.queue_depth > self.recovery_queue_depth or
+                        metrics.lag_seconds > self.recovery_lag_seconds
+                    )
+                else:
+                    new_mode = (
+                        metrics.queue_depth > self.max_queue_depth or
+                        metrics.lag_seconds > self.max_lag_seconds
+                    )
+                
                 self._backpressure_mode = new_mode
                 self._last_backpressure_check = time.time()
             
-            logger.info(f"[BP] Forced check: mode={new_mode}, depth={metrics.queue_depth}, lag={metrics.lag_seconds:.2f}s")
+            logger.info(
+                f"[BP] Forced check: mode={new_mode}, "
+                f"depth={metrics.queue_depth}, lag={metrics.lag_seconds:.2f}s"
+            )
             return new_mode
         except Exception as e:
             logger.error(f"[BP] Forced check failed: {e}")
@@ -763,6 +731,91 @@ class KRNXController:
     ) -> List[Event]:
         """Get recent events for user from STM."""
         return self.stm.get_recent_events(workspace_id, user_id, limit)
+    
+    # ==============================================
+    # HASH CHAIN OPERATIONS (v0.4.0)
+    # ==============================================
+    
+    def get_event_by_hash(self, hash: str) -> Optional[Event]:
+        """
+        v0.4.0: Get event by its computed hash.
+        
+        O(1) lookup via hash index in LTM.
+        """
+        return self.ltm.get_event_by_hash(hash)
+    
+    def verify_event_hash(self, event_id: str) -> bool:
+        """
+        v0.4.0: Verify a single event's hash integrity.
+        
+        Returns True if stored hash matches computed hash.
+        """
+        event = self.ltm.get_event(event_id)
+        if not event:
+            return False
+        
+        computed = event.compute_hash()
+        
+        # Check stored hash in database
+        row = self.ltm.db.execute(
+            "SELECT hash FROM events WHERE event_id = ?",
+            (event_id,)
+        ).fetchone()
+        
+        if row and row['hash']:
+            return row['hash'] == computed
+        
+        # No stored hash - compute matches itself (trivially true)
+        return True
+    
+    def verify_hash_chain(
+        self,
+        workspace_id: str,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        v0.4.0: Verify entire hash chain for a workspace:user stream.
+        
+        Returns:
+            {
+                'valid': bool,
+                'events_verified': int,
+                'gaps': int,
+                'corrupted': int,
+                'issues': List[Dict]
+            }
+        """
+        return self.ltm.verify_hash_chain(workspace_id, user_id)
+    
+    # ==============================================
+    # TEMPORAL REPLAY (v0.4.0)
+    # ==============================================
+    
+    def replay_to_timestamp(
+        self,
+        workspace_id: str,
+        user_id: str,
+        timestamp: float,
+    ) -> List[Event]:
+        """
+        v0.4.0: Replay all events up to a given timestamp.
+        
+        Returns events in chronological order (oldest first).
+        This is THE DIFFERENTIATOR - RAG cannot do this.
+        """
+        return self.ltm.replay_to_timestamp(workspace_id, user_id, timestamp)
+    
+    def get_events_in_range(
+        self,
+        workspace_id: str,
+        user_id: str,
+        start_time: float,
+        end_time: float,
+    ) -> List[Event]:
+        """
+        Get events in a time range, chronological order.
+        """
+        return self.ltm.get_events_in_range(workspace_id, user_id, start_time, end_time)
     
     # ==============================================
     # CONSUMER GROUPS
@@ -805,17 +858,7 @@ class KRNXController:
     # ==============================================
     
     def shutdown(self, timeout: float = 10.0, close_connection_pool: bool = False):
-        """
-        Graceful shutdown with drain.
-        
-        Args:
-            timeout: Max seconds to wait for worker to drain
-            close_connection_pool: If True, also close the global Redis pool.
-                                   Default False because the pool is a shared
-                                   resource - other controllers may still need it.
-                                   Only set True if this is the LAST controller
-                                   in the process.
-        """
+        """Graceful shutdown with drain."""
         logger.info("[STOP] Shutting down KRNX kernel...")
         
         self._worker_running = False
@@ -827,8 +870,6 @@ class KRNXController:
         
         self.ltm.close()
         
-        # Only close pool if explicitly requested
-        # Pool is a shared singleton - closing it affects ALL controllers
         if close_connection_pool:
             close_pool()
             logger.info("[OK] Connection pool closed")
@@ -872,18 +913,13 @@ def create_krnx(
 
 @dataclass
 class RetrievalTelemetry:
-    """
-    Telemetry data for retrieval operations (Constitution 6.5).
-    
-    Captures metrics about event retrieval for app-layer analysis.
-    Kernel collects; app layer decides what to do with it.
-    """
+    """Telemetry data for retrieval operations."""
     workspace_id: str
     user_id: str
-    query_type: str  # 'query', 'replay', 'get_event'
+    query_type: str
     events_returned: int
     latency_ms: float
-    source: str  # 'stm', 'ltm_warm', 'ltm_cold', 'mixed'
+    source: str
     timestamp: float = None
     
     def __post_init__(self):
@@ -911,8 +947,9 @@ __all__ = [
     'create_krnx',
     'BackpressureError',
     'RedisUnavailableError',
+    'ValidationError',
     'WorkerMetrics',
     'ErrorTracker',
     'RetrievalTelemetry',
-    'ack_and_delete',  # Export helper for use in other modules
+    'ack_and_delete',
 ]

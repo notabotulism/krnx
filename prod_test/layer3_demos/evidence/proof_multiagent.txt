@@ -1,0 +1,905 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /mnt/d/chillbot/prod_test/layer3_demos
+configfile: pytest.ini
+plugins: anyio-4.11.0, asyncio-1.3.0
+asyncio: mode=auto, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 13 items
+
+test_d6_d10_multiagent.py::TestD6SharedSubstrateRead::test_d6_1_concurrent_agents_see_same_events[2-50] 2025-11-29 08:07:26,672 - chillbot.kernel.connection_pool - INFO - [OK] Connection pool configured: localhost:6379 (max=200)
+
+-------------------------------- live log setup --------------------------------
+08:07:26 INFO [OK] Connection pool configured: localhost:6379 (max=200)
+2025-11-29 08:07:26,672 - prod_test.layer3_demos.conftest - INFO - [POOL] Configured Redis pool: localhost:6379
+08:07:26 INFO [POOL] Configured Redis pool: localhost:6379
+2025-11-29 08:07:26,674 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_53p4avw6
+08:07:26 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_53p4avw6
+2025-11-29 08:07:26,675 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:26 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:26,683 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:26 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:26,725 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_53p4avw6
+   Warm tier: /tmp/krnx_l3_fabric_53p4avw6/events.db
+   Cold tier: /tmp/krnx_l3_fabric_53p4avw6/events_archive.db
+   High-throughput mode: ENABLED
+08:07:26 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:26,727 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:26 INFO [OK] LTM worker started
+2025-11-29 08:07:26,728 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:26 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:26,728 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:26 INFO    Backpressure: False
+2025-11-29 08:07:26,728 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:26 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:26,728 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:26 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:26,729 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:26 INFO    Hash chain: True
+2025-11-29 08:07:26,729 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:26 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:26,732 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428846' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:26 INFO [WORKER] LTM worker 'worker-1764428846' started (v0.4.0)
+
+======================================================================
+D6.1 PROOF SUMMARY: Concurrent Agents See Same Events
+======================================================================
+
+PROOF POINTS:
+  P1_events_written: ✓ PASS
+  P2_agents_queried: ✓ PASS
+  P3_all_see_same_events: ✓ PASS
+  P4_all_hashes_match: ✓ PASS
+
+METRICS:
+  n_agents: 2
+  total_events: 100
+  events_per_query: 100
+  inconsistencies: 0
+  hash_mismatches: 0
+
+RESULT: ✓ PASSED
+DETAILS: 2 agents, 100 events, 0 inconsistencies
+======================================================================
+
+PASSED2025-11-29 08:07:27,102 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:27 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:27,103 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:27 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:27,284 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:27 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:27,286 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428846' stopped cleanly
+08:07:27 INFO [STOP] LTM worker 'worker-1764428846' stopped cleanly
+2025-11-29 08:07:27,286 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:27 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:27,300 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:27 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD6SharedSubstrateRead::test_d6_1_concurrent_agents_see_same_events[3-100] 2025-11-29 08:07:27,305 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric__lhj3ype
+
+-------------------------------- live log setup --------------------------------
+08:07:27 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric__lhj3ype
+2025-11-29 08:07:27,305 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:27 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:27,307 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:27 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:27,356 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric__lhj3ype
+   Warm tier: /tmp/krnx_l3_fabric__lhj3ype/events.db
+   Cold tier: /tmp/krnx_l3_fabric__lhj3ype/events_archive.db
+   High-throughput mode: ENABLED
+08:07:27 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:27,358 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:27 INFO [OK] LTM worker started
+2025-11-29 08:07:27,359 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:27 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:27,359 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428847' started (v0.4.0)
+08:07:27 INFO [WORKER] LTM worker 'worker-1764428847' started (v0.4.0)
+2025-11-29 08:07:27,359 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:27 INFO    Backpressure: False
+2025-11-29 08:07:27,360 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:27 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:27,361 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:27 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:27,361 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:27 INFO    Hash chain: True
+2025-11-29 08:07:27,361 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:27 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+
+======================================================================
+D6.1 PROOF SUMMARY: Concurrent Agents See Same Events
+======================================================================
+
+PROOF POINTS:
+  P1_events_written: ✓ PASS
+  P2_agents_queried: ✓ PASS
+  P3_all_see_same_events: ✓ PASS
+  P4_all_hashes_match: ✓ PASS
+
+METRICS:
+  n_agents: 3
+  total_events: 300
+  events_per_query: 300
+  inconsistencies: 0
+  hash_mismatches: 0
+
+RESULT: ✓ PASSED
+DETAILS: 3 agents, 300 events, 0 inconsistencies
+======================================================================
+
+PASSED2025-11-29 08:07:28,088 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:28 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:28,089 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:28 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:28,189 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:28 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:28,190 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428847' stopped cleanly
+08:07:28 INFO [STOP] LTM worker 'worker-1764428847' stopped cleanly
+2025-11-29 08:07:28,191 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:28 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:28,213 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:28 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD6SharedSubstrateRead::test_d6_1_concurrent_agents_see_same_events[5-50] 2025-11-29 08:07:28,220 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_xusu3srd
+
+-------------------------------- live log setup --------------------------------
+08:07:28 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_xusu3srd
+2025-11-29 08:07:28,220 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:28 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:28,222 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:28 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:28,282 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_xusu3srd
+   Warm tier: /tmp/krnx_l3_fabric_xusu3srd/events.db
+   Cold tier: /tmp/krnx_l3_fabric_xusu3srd/events_archive.db
+   High-throughput mode: ENABLED
+08:07:28 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:28,283 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:28 INFO [OK] LTM worker started
+2025-11-29 08:07:28,284 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:28 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:28,284 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:28 INFO    Backpressure: False
+2025-11-29 08:07:28,285 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:28 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:28,285 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:28 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:28,285 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:28 INFO    Hash chain: True
+2025-11-29 08:07:28,286 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:28 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:28,289 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428848' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:28 INFO [WORKER] LTM worker 'worker-1764428848' started (v0.4.0)
+
+======================================================================
+D6.1 PROOF SUMMARY: Concurrent Agents See Same Events
+======================================================================
+
+PROOF POINTS:
+  P1_events_written: ✓ PASS
+  P2_agents_queried: ✓ PASS
+  P3_all_see_same_events: ✓ PASS
+  P4_all_hashes_match: ✓ PASS
+
+METRICS:
+  n_agents: 5
+  total_events: 250
+  events_per_query: 250
+  inconsistencies: 0
+  hash_mismatches: 0
+
+RESULT: ✓ PASSED
+DETAILS: 5 agents, 250 events, 0 inconsistencies
+======================================================================
+
+PASSED2025-11-29 08:07:29,222 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:29 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:29,223 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:29 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:29,295 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:29 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:29,296 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428848' stopped cleanly
+08:07:29 INFO [STOP] LTM worker 'worker-1764428848' stopped cleanly
+2025-11-29 08:07:29,297 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:29 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:29,315 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:29 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD6SharedSubstrateRead::test_d6_2_read_consistency_under_writes 2025-11-29 08:07:29,321 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_qyrna8_c
+
+-------------------------------- live log setup --------------------------------
+08:07:29 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_qyrna8_c
+2025-11-29 08:07:29,321 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:29 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:29,323 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:29 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:29,373 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_qyrna8_c
+   Warm tier: /tmp/krnx_l3_fabric_qyrna8_c/events.db
+   Cold tier: /tmp/krnx_l3_fabric_qyrna8_c/events_archive.db
+   High-throughput mode: ENABLED
+08:07:29 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:29,375 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:29 INFO [OK] LTM worker started
+2025-11-29 08:07:29,375 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:29 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:29,375 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:29 INFO    Backpressure: False
+2025-11-29 08:07:29,376 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428849' started (v0.4.0)
+08:07:29 INFO [WORKER] LTM worker 'worker-1764428849' started (v0.4.0)
+2025-11-29 08:07:29,376 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:29 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:29,377 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:29 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:29,377 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:29 INFO    Hash chain: True
+2025-11-29 08:07:29,378 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:29 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+
+======================================================================
+D6.2 PROOF SUMMARY: Read Consistency Under Concurrent Writes
+======================================================================
+
+PROOF POINTS:
+  P1_writers_completed: ✓ PASS
+  P2_readers_collected_snapshots: ✓ PASS
+  P3_snapshots_monotonic: ✓ PASS
+  P4_all_events_visible: ✓ PASS
+
+METRICS:
+  n_writers: 3
+  n_readers: 5
+  events_per_writer: 20
+  expected_events: 60
+  actual_events: 60
+  monotonic_violations: 0
+  snapshots_per_reader: {'reader_0': 6, 'reader_1': 6, 'reader_2': 6, 'reader_3': 6, 'reader_4': 6}
+
+RESULT: ✓ PASSED
+DETAILS: 60/60 events, 0 monotonicity violations
+======================================================================
+
+PASSED2025-11-29 08:07:30,223 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:30 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:30,224 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:30 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:30,303 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:30 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:30,305 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428849' stopped cleanly
+08:07:30 INFO [STOP] LTM worker 'worker-1764428849' stopped cleanly
+2025-11-29 08:07:30,305 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:30 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:30,318 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:30 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD7SharedSubstrateWrite::test_d7_1_concurrent_writes_all_persisted[2-50] 2025-11-29 08:07:30,323 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_8hyfm4li
+
+-------------------------------- live log setup --------------------------------
+08:07:30 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_8hyfm4li
+2025-11-29 08:07:30,324 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:30 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:30,326 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:30 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:30,677 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_8hyfm4li
+   Warm tier: /tmp/krnx_l3_fabric_8hyfm4li/events.db
+   Cold tier: /tmp/krnx_l3_fabric_8hyfm4li/events_archive.db
+   High-throughput mode: ENABLED
+08:07:30 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:30,678 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:30 INFO [OK] LTM worker started
+2025-11-29 08:07:30,678 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:30 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:30,679 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:30 INFO    Backpressure: False
+2025-11-29 08:07:30,679 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:30 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:30,679 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:30 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:30,679 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:30 INFO    Hash chain: True
+2025-11-29 08:07:30,679 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:30 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:30,681 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428850' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:30 INFO [WORKER] LTM worker 'worker-1764428850' started (v0.4.0)
+
+======================================================================
+D7.1 PROOF SUMMARY: Concurrent Writes All Persisted
+======================================================================
+
+PROOF POINTS:
+  P1_agents_wrote: ✓ PASS
+  P2_events_per_agent_correct: ✓ PASS
+  P3_total_matches: ✓ PASS
+  P4_all_unique: ✓ PASS
+
+METRICS:
+  n_agents: 2
+  events_per_agent: 50
+  expected_total: 100
+  actual_total: 100
+  ids_generated: 100
+  unique_ids: 100
+  duplicates: 0
+
+RESULT: ✓ PASSED
+DETAILS: 100/100 events, 0 duplicates
+======================================================================
+
+PASSED2025-11-29 08:07:31,573 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:31 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:31,574 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:31 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:31,665 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:31 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:31,667 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428850' stopped cleanly
+08:07:31 INFO [STOP] LTM worker 'worker-1764428850' stopped cleanly
+2025-11-29 08:07:31,667 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:31 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:31,686 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:31 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD7SharedSubstrateWrite::test_d7_1_concurrent_writes_all_persisted[3-100] 2025-11-29 08:07:31,690 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_twp7rqxn
+
+-------------------------------- live log setup --------------------------------
+08:07:31 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_twp7rqxn
+2025-11-29 08:07:31,690 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:31 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:31,692 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:31 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:31,736 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_twp7rqxn
+   Warm tier: /tmp/krnx_l3_fabric_twp7rqxn/events.db
+   Cold tier: /tmp/krnx_l3_fabric_twp7rqxn/events_archive.db
+   High-throughput mode: ENABLED
+08:07:31 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:31,738 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:31 INFO [OK] LTM worker started
+2025-11-29 08:07:31,738 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:31 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:31,738 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428851' started (v0.4.0)
+2025-11-29 08:07:31,739 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:31 INFO [WORKER] LTM worker 'worker-1764428851' started (v0.4.0)
+08:07:31 INFO    Backpressure: False
+2025-11-29 08:07:31,740 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:31 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:31,740 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:31 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:31,740 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:31 INFO    Hash chain: True
+2025-11-29 08:07:31,740 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:31 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+
+======================================================================
+D7.1 PROOF SUMMARY: Concurrent Writes All Persisted
+======================================================================
+
+PROOF POINTS:
+  P1_agents_wrote: ✓ PASS
+  P2_events_per_agent_correct: ✓ PASS
+  P3_total_matches: ✓ PASS
+  P4_all_unique: ✓ PASS
+
+METRICS:
+  n_agents: 3
+  events_per_agent: 100
+  expected_total: 300
+  actual_total: 300
+  ids_generated: 300
+  unique_ids: 300
+  duplicates: 0
+
+RESULT: ✓ PASSED
+DETAILS: 300/300 events, 0 duplicates
+======================================================================
+
+PASSED2025-11-29 08:07:32,361 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:32 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:32,362 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:32 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:32,472 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:32 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:32,473 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428851' stopped cleanly
+08:07:32 INFO [STOP] LTM worker 'worker-1764428851' stopped cleanly
+2025-11-29 08:07:32,474 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:32 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:32,488 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:32 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD7SharedSubstrateWrite::test_d7_1_concurrent_writes_all_persisted[5-50] 2025-11-29 08:07:32,494 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_tzlk_kf7
+
+-------------------------------- live log setup --------------------------------
+08:07:32 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_tzlk_kf7
+2025-11-29 08:07:32,494 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:32 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:32,495 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:32 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:32,539 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_tzlk_kf7
+   Warm tier: /tmp/krnx_l3_fabric_tzlk_kf7/events.db
+   Cold tier: /tmp/krnx_l3_fabric_tzlk_kf7/events_archive.db
+   High-throughput mode: ENABLED
+08:07:32 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:32,540 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:32 INFO [OK] LTM worker started
+2025-11-29 08:07:32,541 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:32 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:32,541 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:32 INFO    Backpressure: False
+2025-11-29 08:07:32,541 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:32 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:32,542 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:32 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:32,542 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:32 INFO    Hash chain: True
+2025-11-29 08:07:32,542 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:32 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:32,546 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428852' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:32 INFO [WORKER] LTM worker 'worker-1764428852' started (v0.4.0)
+
+======================================================================
+D7.1 PROOF SUMMARY: Concurrent Writes All Persisted
+======================================================================
+
+PROOF POINTS:
+  P1_agents_wrote: ✓ PASS
+  P2_events_per_agent_correct: ✓ PASS
+  P3_total_matches: ✓ PASS
+  P4_all_unique: ✓ PASS
+
+METRICS:
+  n_agents: 5
+  events_per_agent: 50
+  expected_total: 250
+  actual_total: 250
+  ids_generated: 250
+  unique_ids: 250
+  duplicates: 0
+
+RESULT: ✓ PASSED
+DETAILS: 250/250 events, 0 duplicates
+======================================================================
+
+PASSED2025-11-29 08:07:33,042 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:33 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:33,042 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:33 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:33,182 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:33 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:33,183 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428852' stopped cleanly
+08:07:33 INFO [STOP] LTM worker 'worker-1764428852' stopped cleanly
+2025-11-29 08:07:33,184 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:33 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:33,203 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:33 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD7SharedSubstrateWrite::test_d7_2_write_order_preservation 2025-11-29 08:07:33,212 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric__qzt62gj
+
+-------------------------------- live log setup --------------------------------
+08:07:33 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric__qzt62gj
+2025-11-29 08:07:33,213 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:33 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:33,215 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:33 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:33,293 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric__qzt62gj
+   Warm tier: /tmp/krnx_l3_fabric__qzt62gj/events.db
+   Cold tier: /tmp/krnx_l3_fabric__qzt62gj/events_archive.db
+   High-throughput mode: ENABLED
+08:07:33 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:33,295 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:33 INFO [OK] LTM worker started
+2025-11-29 08:07:33,295 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:33 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:33,296 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:33 INFO    Backpressure: False
+2025-11-29 08:07:33,296 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:33 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:33,296 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:33 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:33,297 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:33 INFO    Hash chain: True
+2025-11-29 08:07:33,297 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:33 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:33,306 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428853' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:33 INFO [WORKER] LTM worker 'worker-1764428853' started (v0.4.0)
+
+======================================================================
+D7.2 PROOF SUMMARY: Write Order Preservation
+======================================================================
+
+PROOF POINTS:
+  P1_all_agents_wrote: ✓ PASS
+  P2_events_retrieved: ✓ PASS
+  P3_order_preserved: ✓ PASS
+  P4_no_gaps: ✓ PASS
+
+METRICS:
+  n_agents: 3
+  events_per_agent: 20
+  total_events: 60
+  order_violations: 0
+  sequence_gaps: 0
+  events_per_agent_found: {'ordered_writer_0': 20, 'ordered_writer_1': 20, 'ordered_writer_2': 20}
+
+RESULT: ✓ PASSED
+DETAILS: 60 events, 0 order violations, 0 gaps
+======================================================================
+
+PASSED2025-11-29 08:07:33,962 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:33 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:33,963 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:33 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:34,089 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:34 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:34,092 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428853' stopped cleanly
+08:07:34 INFO [STOP] LTM worker 'worker-1764428853' stopped cleanly
+2025-11-29 08:07:34,093 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:34 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:34,113 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:34 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD8TemporalConsistencyAcrossAgents::test_d8_1_temporal_replay_consistency 2025-11-29 08:07:34,119 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_3udoyxsl
+
+-------------------------------- live log setup --------------------------------
+08:07:34 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_3udoyxsl
+2025-11-29 08:07:34,120 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:34 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:34,121 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:34 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:34,170 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_3udoyxsl
+   Warm tier: /tmp/krnx_l3_fabric_3udoyxsl/events.db
+   Cold tier: /tmp/krnx_l3_fabric_3udoyxsl/events_archive.db
+   High-throughput mode: ENABLED
+08:07:34 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:34,171 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:34 INFO [OK] LTM worker started
+2025-11-29 08:07:34,172 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:34 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:34,172 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:34 INFO    Backpressure: False
+2025-11-29 08:07:34,173 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:34 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:34,173 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:34 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:34,173 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:34 INFO    Hash chain: True
+2025-11-29 08:07:34,174 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:34 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:34,176 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428854' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:34 INFO [WORKER] LTM worker 'worker-1764428854' started (v0.4.0)
+
+======================================================================
+D8.1 PROOF SUMMARY: Temporal Replay Consistency Across Agents
+======================================================================
+
+PROOF POINTS:
+  P1_events_written: ✓ PASS
+  P2_timestamp_recorded: ✓ PASS
+  P3_all_agents_replayed: ✓ PASS
+  P4_all_hashes_identical: ✓ PASS
+  P4_all_counts_identical: ✓ PASS
+
+METRICS:
+  n_agents: 5
+  events_before_t: 20
+  events_after_t: 20
+  unique_hashes: 1
+  unique_counts: 1
+  events_in_replay: 20
+
+RESULT: ✓ PASSED
+DETAILS: 5 agents, 1 unique hash(es)
+======================================================================
+
+PASSED2025-11-29 08:07:35,108 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:35 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:35,108 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:35 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:35,307 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:35 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:35,311 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428854' stopped cleanly
+08:07:35 INFO [STOP] LTM worker 'worker-1764428854' stopped cleanly
+2025-11-29 08:07:35,312 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:35 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:35,342 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:35 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD9AgentStateIsolation::test_d9_1_agent_isolated_writes 2025-11-29 08:07:35,346 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_difugekq
+
+-------------------------------- live log setup --------------------------------
+08:07:35 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_difugekq
+2025-11-29 08:07:35,346 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:35 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:35,348 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:35 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:35,395 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_difugekq
+   Warm tier: /tmp/krnx_l3_fabric_difugekq/events.db
+   Cold tier: /tmp/krnx_l3_fabric_difugekq/events_archive.db
+   High-throughput mode: ENABLED
+08:07:35 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:35,396 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:35 INFO [OK] LTM worker started
+2025-11-29 08:07:35,397 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:35 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:35,397 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:35 INFO    Backpressure: False
+2025-11-29 08:07:35,398 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:35 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:35,398 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:35 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:35,399 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:35 INFO    Hash chain: True
+2025-11-29 08:07:35,399 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:35 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:35,406 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428855' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:35 INFO [WORKER] LTM worker 'worker-1764428855' started (v0.4.0)
+
+======================================================================
+D9.1 PROOF SUMMARY: Agent Isolated Writes
+======================================================================
+
+PROOF POINTS:
+  P1_all_wrote: ✓ PASS
+  P2_queries_returned_events: ✓ PASS
+  P3_correct_counts: ✓ PASS
+  P4_no_cross_contamination: ✓ PASS
+
+METRICS:
+  n_agents: 3
+  events_per_agent: 10
+  agent_event_counts: {'isolated_agent_0': 10, 'isolated_agent_1': 10, 'isolated_agent_2': 10}
+  cross_contamination: 0
+
+RESULT: ✓ PASSED
+DETAILS: Counts: {'isolated_agent_0': 10, 'isolated_agent_1': 10, 'isolated_agent_2': 10}, contamination: 0
+======================================================================
+
+PASSED2025-11-29 08:07:35,663 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:35 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:35,663 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:35 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:35,810 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:35 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:35,811 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428855' stopped cleanly
+08:07:35 INFO [STOP] LTM worker 'worker-1764428855' stopped cleanly
+2025-11-29 08:07:35,812 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:35 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:35,822 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:35 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD10CoordinationPrimitives::test_d10_1_leader_election_via_memory 2025-11-29 08:07:35,828 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_0szjddmg
+
+-------------------------------- live log setup --------------------------------
+08:07:35 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_0szjddmg
+2025-11-29 08:07:35,828 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:35 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:35,830 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:35 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:35,878 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_0szjddmg
+   Warm tier: /tmp/krnx_l3_fabric_0szjddmg/events.db
+   Cold tier: /tmp/krnx_l3_fabric_0szjddmg/events_archive.db
+   High-throughput mode: ENABLED
+08:07:35 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:35,879 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:35 INFO [OK] LTM worker started
+2025-11-29 08:07:35,880 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:35 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:35,880 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:35 INFO    Backpressure: False
+2025-11-29 08:07:35,880 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:35 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:35,881 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:35 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:35,881 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:35 INFO    Hash chain: True
+2025-11-29 08:07:35,882 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:35 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:35,885 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428855' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:35 INFO [WORKER] LTM worker 'worker-1764428855' started (v0.4.0)
+
+======================================================================
+D10.1 PROOF SUMMARY: Leader Election via Memory
+======================================================================
+
+PROOF POINTS:
+  P1_all_claimed: ✓ PASS
+  P2_claims_queryable: ✓ PASS
+  P3_leader_determined: ✓ PASS
+  P4_all_agents_agree: ✓ PASS
+
+METRICS:
+  n_agents: 5
+  claims_found: 5
+  leader: candidate_4
+  all_agents_agree: True
+  determinations: ['candidate_4', 'candidate_4', 'candidate_4', 'candidate_4', 'candidate_4']
+
+RESULT: ✓ PASSED
+DETAILS: Leader: candidate_4, agreement: True
+======================================================================
+
+PASSED2025-11-29 08:07:36,110 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:36 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:36,111 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:36 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:36,212 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:36 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:36,213 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428855' stopped cleanly
+08:07:36 INFO [STOP] LTM worker 'worker-1764428855' stopped cleanly
+2025-11-29 08:07:36,214 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:36 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:36,233 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:36 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD10CoordinationPrimitives::test_d10_2_distributed_counter 2025-11-29 08:07:36,238 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_sicny95y
+
+-------------------------------- live log setup --------------------------------
+08:07:36 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_fabric_sicny95y
+2025-11-29 08:07:36,238 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:07:36 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:07:36,240 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:07:36 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:07:36,285 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_fabric_sicny95y
+   Warm tier: /tmp/krnx_l3_fabric_sicny95y/events.db
+   Cold tier: /tmp/krnx_l3_fabric_sicny95y/events_archive.db
+   High-throughput mode: ENABLED
+08:07:36 INFO [START] Starting LTM worker thread...
+2025-11-29 08:07:36,286 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:07:36 INFO [OK] LTM worker started
+2025-11-29 08:07:36,287 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:07:36 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:07:36,287 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:07:36 INFO    Backpressure: False
+2025-11-29 08:07:36,288 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:07:36 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:07:36,288 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:07:36 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:07:36,289 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:07:36 INFO    Hash chain: True
+2025-11-29 08:07:36,289 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+08:07:36 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=False, auto_enrich=False)
+2025-11-29 08:07:36,291 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764428856' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:07:36 INFO [WORKER] LTM worker 'worker-1764428856' started (v0.4.0)
+
+======================================================================
+D10.2 PROOF SUMMARY: Distributed Counter
+======================================================================
+
+PROOF POINTS:
+  P1_increments_written: ✓ PASS
+  P2_counter_readable: ✓ PASS
+  P3_all_see_same: ✓ PASS
+  P4_value_correct: ✓ PASS
+
+METRICS:
+  n_agents: 3
+  increments_per_agent: 10
+  expected_value: 30
+  agent_counts: {'counter_agent_0': 30, 'counter_agent_1': 30, 'counter_agent_2': 30}
+
+RESULT: ✓ PASSED
+DETAILS: Expected: 30, counts: {'counter_agent_0': 30, 'counter_agent_1': 30, 'counter_agent_2': 30}
+======================================================================
+
+PASSED2025-11-29 08:07:36,702 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:07:36 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:07:36,703 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:07:36 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:07:36,817 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:07:36 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:07:36,819 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764428856' stopped cleanly
+08:07:36 INFO [STOP] LTM worker 'worker-1764428856' stopped cleanly
+2025-11-29 08:07:36,819 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:07:36 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:07:36,833 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:07:36 INFO [OK] KRNX kernel shutdown complete
+
+test_d6_d10_multiagent.py::TestD6D10ProofSummary::test_d6_d10_proof_complete 
+======================================================================
+D6-D10 MULTI-AGENT COORDINATION PROOFS
+======================================================================
+
+D6-D10: KRNX ENABLES MULTI-AGENT COORDINATION
+
+  D6: SHARED SUBSTRATE READ CONSISTENCY
+    D6.1: Concurrent agents see identical event sets
+    D6.2: Read consistency during concurrent writes
+    
+  D7: SHARED SUBSTRATE WRITE COORDINATION
+    D7.1: All concurrent writes persisted (no loss)
+    D7.2: Write order preserved per agent
+    
+  D8: TEMPORAL CONSISTENCY ACROSS AGENTS
+    D8.1: All agents replaying to T see identical state
+    
+  D9: AGENT STATE ISOLATION
+    D9.1: Agent-specific user_id creates isolated streams
+    
+  D10: COORDINATION PRIMITIVES
+    D10.1: Leader election via shared memory
+    D10.2: Distributed counter via event counting
+
+WHY THIS MATTERS:
+- Agents coordinate through SHARED STATE, not message passing
+- Consistent temporal views across all agents
+- Build complex coordination without external systems
+- Audit trail of all coordination events
+
+USE CASES:
+- Multi-agent orchestration (CrewAI, AutoGen)
+- Distributed AI systems
+- Agent swarms with shared memory
+- Collaborative AI assistants
+
+THIS IS INFRASTRUCTURE FOR THE AGENTIC ERA.
+
+======================================================================
+
+PASSED2025-11-29 08:07:36,840 - chillbot.kernel.connection_pool - INFO - [OK] Connection pool closed
+
+------------------------------ live log teardown -------------------------------
+08:07:36 INFO [OK] Connection pool closed
+2025-11-29 08:07:36,841 - prod_test.layer3_demos.conftest - INFO - [POOL] Closed Redis pool
+
+08:07:36 INFO [POOL] Closed Redis pool
+
+
+=============================== warnings summary ===============================
+../../../../../home/krnx/.local/lib/python3.10/site-packages/_pytest/config/__init__.py:1397
+  /home/krnx/.local/lib/python3.10/site-packages/_pytest/config/__init__.py:1397: PytestConfigWarning: Unknown config option: timeout
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 13 passed, 1 warning in 9.63s =========================

@@ -6,6 +6,7 @@ Supports multiple workspaces, filtering, and batch operations.
 
 FIXED: TTL-based collection caching to prevent high-concurrency bottlenecks.
 FIXED v2: Better thread-safety - use fresh timestamp after lock acquisition.
+FIXED v3: Convert event IDs to valid UUIDs for Qdrant point IDs.
 
 Usage:
     vectors = VectorStore(url="http://localhost:6333")
@@ -32,11 +33,58 @@ Usage:
 import logging
 import threading
 import time
+import uuid
 from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass, field
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# UUID CONVERSION FOR QDRANT
+# =============================================================================
+
+# Namespace UUID for KRNX event ID -> Qdrant point ID mapping
+# Using DNS namespace as base (standard UUID namespace)
+KRNX_UUID_NAMESPACE = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')
+
+
+def _to_qdrant_id(event_id: str) -> str:
+    """
+    Convert event_id to valid Qdrant point ID (UUID string).
+    
+    Qdrant requires point IDs to be either:
+    - Unsigned integers
+    - Valid UUID strings (8-4-4-4-12 format)
+    
+    Our event IDs like 'evt_4d3b543f8df44b09' are neither, so we use
+    UUID5 to generate a deterministic UUID from the event ID.
+    
+    Args:
+        event_id: Event ID string (e.g., 'evt_4d3b543f8df44b09')
+    
+    Returns:
+        Valid UUID string (e.g., 'a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+    """
+    return str(uuid.uuid5(KRNX_UUID_NAMESPACE, event_id))
+
+
+def _from_qdrant_id(qdrant_id: str, original_id: str = None) -> str:
+    """
+    Get original event ID from Qdrant point.
+    
+    Since UUID5 is a one-way hash, we store the original ID in payload.
+    This function is mainly for documentation - actual retrieval uses payload.
+    
+    Args:
+        qdrant_id: UUID string from Qdrant
+        original_id: Original event ID from payload (if available)
+    
+    Returns:
+        Original event ID
+    """
+    return original_id or qdrant_id
 
 
 class VectorStoreBackend(Enum):
@@ -83,6 +131,7 @@ class VectorStore:
     
     FIXED: TTL-based caching prevents 50-thread bottleneck on collection checks.
     FIXED v2: Thread-safe initialization with fresh timestamps after lock.
+    FIXED v3: Event IDs converted to valid UUIDs for Qdrant compatibility.
     """
     
     def __init__(
@@ -242,8 +291,8 @@ class VectorStore:
                 exists = any(c.name == name for c in collections)
                 
                 if not exists:
+                    # Create collection
                     logger.info(f"[VECTOR] Creating collection: {name} (dim={dimension})")
-                    
                     self._client.create_collection(
                         collection_name=name,
                         vectors_config=VectorParams(
@@ -251,19 +300,19 @@ class VectorStore:
                             distance=Distance.COSINE,
                         ),
                     )
-                else:
-                    logger.debug(f"[VECTOR] Collection exists: {name}")
                 
-                # Update cache with FRESH timestamp (after all work is done)
-                self._known_collections[workspace_id] = (dimension, time.time())
+                # Update cache with fresh timestamp
+                self._known_collections[workspace_id] = (dimension, fresh_now)
                 
             except Exception as e:
-                logger.error(f"[VECTOR] Failed to ensure collection {name}: {e}")
+                logger.error(f"[VECTOR] Failed to ensure collection: {e}")
                 raise
     
     def is_collection_cached(self, workspace_id: str) -> bool:
         """
-        Check if collection is in valid cache (for testing/debugging).
+        Check if collection is in cache (without network call).
+        
+        Useful for debugging cache behavior.
         
         Args:
             workspace_id: Workspace identifier
@@ -290,6 +339,9 @@ class VectorStore:
         NOTE: Assumes collection already exists (call ensure_collection first
         during initialization, not on every index call).
         
+        FIXED v3: Converts event ID to valid UUID for Qdrant compatibility.
+        Original ID is stored in payload for retrieval.
+        
         Args:
             workspace_id: Workspace identifier
             id: Unique vector ID (usually event_id)
@@ -307,13 +359,20 @@ class VectorStore:
         try:
             from qdrant_client.models import PointStruct
             
+            # FIXED v3: Convert event ID to valid UUID for Qdrant
+            qdrant_id = _to_qdrant_id(id)
+            
+            # Store original ID in payload for retrieval
+            full_payload = payload.copy() if payload else {}
+            full_payload["_original_id"] = id
+            
             self.client.upsert(
                 collection_name=name,
                 points=[
                     PointStruct(
-                        id=id,
+                        id=qdrant_id,
                         vector=vector,
-                        payload=payload or {},
+                        payload=full_payload,
                     )
                 ],
             )
@@ -332,6 +391,8 @@ class VectorStore:
         Index multiple vectors efficiently.
         
         NOTE: Assumes collection already exists.
+        
+        FIXED v3: Converts event IDs to valid UUIDs for Qdrant compatibility.
         
         Args:
             workspace_id: Workspace identifier
@@ -356,22 +417,28 @@ class VectorStore:
             # Process in batches
             for i in range(0, len(vectors), batch_size):
                 batch = vectors[i:i + batch_size]
+                points = []
                 
-                points = [
-                    PointStruct(
-                        id=v["id"],
-                        vector=v["vector"],
-                        payload=v.get("payload", {}),
+                for v in batch:
+                    original_id = v["id"]
+                    qdrant_id = _to_qdrant_id(original_id)
+                    
+                    # Store original ID in payload
+                    payload = v.get("payload", {}).copy()
+                    payload["_original_id"] = original_id
+                    
+                    points.append(
+                        PointStruct(
+                            id=qdrant_id,
+                            vector=v["vector"],
+                            payload=payload,
+                        )
                     )
-                    for v in batch
-                ]
                 
                 self.client.upsert(
                     collection_name=name,
                     points=points,
                 )
-            
-            logger.debug(f"[VECTOR] Indexed {len(vectors)} vectors to {name}")
             
         except Exception as e:
             logger.error(f"[VECTOR] Batch index failed: {e}")
@@ -384,24 +451,51 @@ class VectorStore:
         top_k: int = 10,
         filter: Optional[Dict[str, Any]] = None,
         score_threshold: Optional[float] = None,
+        with_vectors: bool = False,
     ) -> List[VectorMatch]:
         """
         Search for similar vectors.
         
+        NOTE: Returns original event IDs (not Qdrant UUIDs).
+        
         Args:
             workspace_id: Workspace identifier
             vector: Query vector
-            top_k: Number of results
-            filter: Optional Qdrant filter conditions
-            score_threshold: Minimum score threshold
+            top_k: Number of results to return
+            filter: Optional filter conditions
+            score_threshold: Minimum similarity score
+            with_vectors: Include vectors in results
         
         Returns:
-            List of VectorMatch objects sorted by score descending
+            List of VectorMatch results with original event IDs
         """
         name = self._collection_name(workspace_id)
         
         if self.backend == VectorStoreBackend.MEMORY:
-            return self._memory_search(name, vector, top_k, score_threshold)
+            # Simple cosine similarity search for memory backend
+            results = []
+            store = self._memory_store.get(name, {})
+            
+            for id, (stored_vec, payload) in store.items():
+                # Cosine similarity
+                dot = sum(a * b for a, b in zip(vector, stored_vec))
+                norm_q = sum(a * a for a in vector) ** 0.5
+                norm_s = sum(a * a for a in stored_vec) ** 0.5
+                score = dot / (norm_q * norm_s) if norm_q and norm_s else 0
+                
+                if score_threshold and score < score_threshold:
+                    continue
+                
+                results.append(VectorMatch(
+                    id=id,
+                    score=score,
+                    payload=payload,
+                    vector=stored_vec if with_vectors else None,
+                ))
+            
+            # Sort by score descending
+            results.sort(key=lambda x: x.score, reverse=True)
+            return results[:top_k]
         
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue
@@ -411,70 +505,57 @@ class VectorStore:
             if filter:
                 must_conditions = []
                 for key, value in filter.items():
-                    if value is not None:
-                        must_conditions.append(
-                            FieldCondition(key=key, match=MatchValue(value=value))
-                        )
-                if must_conditions:
-                    qdrant_filter = Filter(must=must_conditions)
+                    must_conditions.append(
+                        FieldCondition(key=key, match=MatchValue(value=value))
+                    )
+                qdrant_filter = Filter(must=must_conditions)
             
-            results = self.client.search(
-                collection_name=name,
-                query_vector=vector,
-                limit=top_k,
-                query_filter=qdrant_filter,
-                score_threshold=score_threshold,
-            )
-            
-            return [
-                VectorMatch(
-                    id=r.id,
-                    score=r.score,
-                    payload=r.payload or {},
+            # FIXED v4: Use query_points for qdrant-client >= 1.7, fallback to search
+            try:
+                # New API (qdrant-client >= 1.7)
+                from qdrant_client.models import QueryRequest
+                response = self.client.query_points(
+                    collection_name=name,
+                    query=vector,
+                    limit=top_k,
+                    query_filter=qdrant_filter,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vectors=with_vectors,
                 )
-                for r in results
-            ]
+                results = response.points
+            except (ImportError, AttributeError, TypeError):
+                # Old API fallback (qdrant-client < 1.7)
+                results = self.client.search(
+                    collection_name=name,
+                    query_vector=vector,
+                    limit=top_k,
+                    query_filter=qdrant_filter,
+                    score_threshold=score_threshold,
+                    with_vectors=with_vectors,
+                )
+            
+            # Convert to VectorMatch with original IDs
+            matches = []
+            for r in results:
+                # Get original ID from payload (FIXED v3)
+                original_id = r.payload.get("_original_id", str(r.id))
+                
+                # Remove internal field from returned payload
+                payload = {k: v for k, v in r.payload.items() if k != "_original_id"}
+                
+                matches.append(VectorMatch(
+                    id=original_id,
+                    score=r.score,
+                    payload=payload,
+                    vector=r.vector if with_vectors else None,
+                ))
+            
+            return matches
             
         except Exception as e:
             logger.error(f"[VECTOR] Search failed: {e}")
             return []
-    
-    def _memory_search(
-        self,
-        collection_name: str,
-        query_vector: List[float],
-        top_k: int,
-        score_threshold: Optional[float],
-    ) -> List[VectorMatch]:
-        """In-memory search for testing."""
-        import numpy as np
-        
-        if collection_name not in self._memory_store:
-            return []
-        
-        query = np.array(query_vector)
-        query_norm = np.linalg.norm(query)
-        
-        if query_norm == 0:
-            return []
-        
-        scores = []
-        for id, (vector, payload) in self._memory_store[collection_name].items():
-            v = np.array(vector)
-            v_norm = np.linalg.norm(v)
-            
-            if v_norm == 0:
-                continue
-            
-            score = float(np.dot(query, v) / (query_norm * v_norm))
-            
-            if score_threshold and score < score_threshold:
-                continue
-            
-            scores.append(VectorMatch(id=id, score=score, payload=payload))
-        
-        scores.sort(key=lambda x: x.score, reverse=True)
-        return scores[:top_k]
     
     def get(
         self,
@@ -483,41 +564,50 @@ class VectorStore:
         with_vector: bool = False,
     ) -> Optional[VectorMatch]:
         """
-        Get a single vector by ID.
+        Get a vector by ID.
         
         Args:
             workspace_id: Workspace identifier
-            id: Vector ID
+            id: Vector ID (original event ID)
             with_vector: Include vector in result
         
         Returns:
-            VectorMatch or None if not found
+            VectorMatch or None
         """
         name = self._collection_name(workspace_id)
         
         if self.backend == VectorStoreBackend.MEMORY:
-            if name in self._memory_store and id in self._memory_store[name]:
-                vector, payload = self._memory_store[name][id]
+            store = self._memory_store.get(name, {})
+            if id in store:
+                vec, payload = store[id]
                 return VectorMatch(
                     id=id,
                     score=1.0,
                     payload=payload,
-                    vector=vector if with_vector else None,
+                    vector=vec if with_vector else None,
                 )
             return None
         
         try:
+            # Convert to Qdrant UUID (FIXED v3)
+            qdrant_id = _to_qdrant_id(id)
+            
             results = self.client.retrieve(
                 collection_name=name,
-                ids=[id],
+                ids=[qdrant_id],
                 with_vectors=with_vector,
             )
             
-            for r in results:
+            if results:
+                r = results[0]
+                # Get original ID from payload
+                original_id = r.payload.get("_original_id", id)
+                payload = {k: v for k, v in r.payload.items() if k != "_original_id"}
+                
                 return VectorMatch(
-                    id=r.id,
+                    id=original_id,
                     score=1.0,
-                    payload=r.payload or {},
+                    payload=payload,
                     vector=r.vector if with_vector else None,
                 )
             return None
@@ -532,7 +622,7 @@ class VectorStore:
         
         Args:
             workspace_id: Workspace identifier
-            id: Vector ID to delete
+            id: Vector ID to delete (original event ID)
         """
         name = self._collection_name(workspace_id)
         
@@ -544,9 +634,12 @@ class VectorStore:
         try:
             from qdrant_client.models import PointIdsList
             
+            # Convert to Qdrant UUID (FIXED v3)
+            qdrant_id = _to_qdrant_id(id)
+            
             self.client.delete(
                 collection_name=name,
-                points_selector=PointIdsList(points=[id]),
+                points_selector=PointIdsList(points=[qdrant_id]),
             )
             
         except Exception as e:
@@ -558,7 +651,7 @@ class VectorStore:
         
         Args:
             workspace_id: Workspace identifier
-            ids: List of vector IDs to delete
+            ids: List of vector IDs to delete (original event IDs)
         """
         if not ids:
             return
@@ -574,9 +667,12 @@ class VectorStore:
         try:
             from qdrant_client.models import PointIdsList
             
+            # Convert all IDs to Qdrant UUIDs (FIXED v3)
+            qdrant_ids = [_to_qdrant_id(id) for id in ids]
+            
             self.client.delete(
                 collection_name=name,
-                points_selector=PointIdsList(points=ids),
+                points_selector=PointIdsList(points=qdrant_ids),
             )
             
         except Exception as e:

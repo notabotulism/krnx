@@ -17,6 +17,22 @@ Thumbs.db
 .idea/
 /archive/
 
+# Databases
+*.db
+*.db-wal
+*.db-shm
+
+# Test/soak data directories
+tests/soak_data_*/
+prod_test/test_data/
+prod_test/layer3_demos/results/
+prod_test/layer3_demos/benchmark_data/
+prod_test/layer3_demos/data/
+
+# Redis dumps
+*.rdb
+dump.rdb
+
 # Development cruft
 **/archive/
 *.backup

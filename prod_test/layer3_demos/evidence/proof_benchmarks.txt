@@ -1,0 +1,117 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.0.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /mnt/d/chillbot/prod_test/layer3_demos
+configfile: pytest.ini
+plugins: anyio-4.11.0, asyncio-1.3.0
+asyncio: mode=auto, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 13 items
+
+test_d1_locomo.py::TestD1LOCOMO::test_d1_1_ingestion_completeness 2025-11-29 08:17:56,911 - chillbot.kernel.connection_pool - INFO - [OK] Connection pool configured: localhost:6379 (max=200)
+
+-------------------------------- live log setup --------------------------------
+08:17:56 INFO [OK] Connection pool configured: localhost:6379 (max=200)
+2025-11-29 08:17:56,911 - prod_test.layer3_demos.conftest - INFO - [POOL] Configured Redis pool: localhost:6379
+08:17:56 INFO [POOL] Configured Redis pool: localhost:6379
+2025-11-29 08:17:56,915 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_vectors_xijdwdr0
+08:17:56 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_vectors_xijdwdr0
+2025-11-29 08:17:56,916 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:17:56 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:17:56,923 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:17:56 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:17:56,975 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_vectors_xijdwdr0
+   Warm tier: /tmp/krnx_l3_vectors_xijdwdr0/events.db
+   Cold tier: /tmp/krnx_l3_vectors_xijdwdr0/events_archive.db
+   High-throughput mode: ENABLED
+08:17:56 INFO [START] Starting LTM worker thread...
+2025-11-29 08:17:56,976 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:17:56 INFO [OK] LTM worker started
+2025-11-29 08:17:56,977 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:17:56 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:17:56,977 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:17:56 INFO    Backpressure: False
+2025-11-29 08:17:56,977 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:17:56 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:17:56,978 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:17:56 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:17:56,978 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:17:56 INFO    Hash chain: True
+2025-11-29 08:17:56,978 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=True, auto_enrich=False)
+08:17:56 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=True, auto_enrich=False)
+2025-11-29 08:17:56,980 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764429476' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:17:56 INFO [WORKER] LTM worker 'worker-1764429476' started (v0.4.0)
+2025-11-29 08:17:56,984 - conftest - INFO - Using cached dataset: /mnt/d/chillbot/prod_test/layer3_demos/data/locomo.json
+08:17:56 INFO Using cached dataset: /mnt/d/chillbot/prod_test/layer3_demos/data/locomo.json
+
+======================================================================
+D1.1 PROOF SUMMARY: LOCOMO Ingestion Completeness
+======================================================================
+
+PROOF POINTS:
+  P1_dataset_loaded: ✓ PASS
+  P2_ingestion_complete: ✓ PASS
+  P3_events_match_turns: ✓ PASS
+  P4_events_queryable: ✗ FAIL
+
+METRICS:
+  total_conversations: 10
+  test_conversations: 2
+  expected_turns: 0
+  ingested_events: 0
+  queryable_events: 0
+
+RESULT: ✗ FAILED
+DETAILS: Ingested 0/0 turns from 2 conversations
+======================================================================
+
+PASSED2025-11-29 08:17:57,064 - chillbot.kernel.controller - INFO - [STOP] Shutting down KRNX kernel...
+
+------------------------------ live log teardown -------------------------------
+08:17:57 INFO [STOP] Shutting down KRNX kernel...
+2025-11-29 08:17:57,065 - chillbot.kernel.controller - INFO - [STOP] Waiting for worker to finish draining...
+08:17:57 INFO [STOP] Waiting for worker to finish draining...
+2025-11-29 08:17:57,113 - chillbot.kernel.controller - INFO - [DRAIN] Worker draining 0 accumulated events...
+08:17:57 INFO [DRAIN] Worker draining 0 accumulated events...
+2025-11-29 08:17:57,115 - chillbot.kernel.controller - INFO - [STOP] LTM worker 'worker-1764429476' stopped cleanly
+08:17:57 INFO [STOP] LTM worker 'worker-1764429476' stopped cleanly
+2025-11-29 08:17:57,115 - chillbot.kernel.ltm - INFO - [LTM] Final checkpoint before close...
+08:17:57 INFO [LTM] Final checkpoint before close...
+2025-11-29 08:17:57,137 - chillbot.kernel.controller - INFO - [OK] KRNX kernel shutdown complete
+[OK] LTM connections closed
+08:17:57 INFO [OK] KRNX kernel shutdown complete
+
+test_d1_locomo.py::TestD1LOCOMO::test_d1_2_question_answering 2025-11-29 08:17:57,292 - chillbot.kernel.controller - INFO - [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_vectors_qc97u5qv
+
+-------------------------------- live log setup --------------------------------
+08:17:57 INFO [START] Initializing KRNX kernel v0.4.0 at /tmp/krnx_l3_vectors_qc97u5qv
+2025-11-29 08:17:57,294 - chillbot.kernel.connection_pool - WARNING - [WARN] Connection pool already configured, ignoring
+08:17:57 WARNING [WARN] Connection pool already configured, ignoring
+2025-11-29 08:17:57,296 - chillbot.kernel.stm - INFO - [OK] STM connected to Redis (TTL: 24h)
+08:17:57 INFO [OK] STM connected to Redis (TTL: 24h)
+2025-11-29 08:17:57,346 - chillbot.kernel.controller - INFO - [START] Starting LTM worker thread...
+[OK] LTM v0.4.0 initialized at /tmp/krnx_l3_vectors_qc97u5qv
+   Warm tier: /tmp/krnx_l3_vectors_qc97u5qv/events.db
+   Cold tier: /tmp/krnx_l3_vectors_qc97u5qv/events_archive.db
+   High-throughput mode: ENABLED
+08:17:57 INFO [START] Starting LTM worker thread...
+2025-11-29 08:17:57,347 - chillbot.kernel.controller - INFO - [OK] LTM worker started
+08:17:57 INFO [OK] LTM worker started
+2025-11-29 08:17:57,348 - chillbot.kernel.controller - INFO - [OK] KRNX kernel v0.4.0 initialized
+08:17:57 INFO [OK] KRNX kernel v0.4.0 initialized
+2025-11-29 08:17:57,348 - chillbot.kernel.controller - INFO -    Backpressure: False
+08:17:57 INFO    Backpressure: False
+2025-11-29 08:17:57,349 - chillbot.kernel.controller - INFO -    Max queue depth: 50000 (recover at 37500)
+08:17:57 INFO    Max queue depth: 50000 (recover at 37500)
+2025-11-29 08:17:57,349 - chillbot.kernel.controller - INFO -    Max lag: 30.0s (recover at 22.5s)
+08:17:57 INFO    Max lag: 30.0s (recover at 22.5s)
+2025-11-29 08:17:57,350 - chillbot.kernel.controller - INFO -    Hash chain: True
+08:17:57 INFO    Hash chain: True
+2025-11-29 08:17:57,350 - chillbot.fabric.orchestrator - INFO - [FABRIC] Initialized TURBO (workspace=default, auto_embed=True, auto_enrich=False)
+08:17:57 INFO [FABRIC] Initialized TURBO (workspace=default, auto_embed=True, auto_enrich=False)
+2025-11-29 08:17:57,352 - chillbot.kernel.controller - INFO - [WORKER] LTM worker 'worker-1764429477' started (v0.4.0)
+-------------------------------- live log call ---------------------------------
+08:17:57 INFO [WORKER] LTM worker 'worker-1764429477' started (v0.4.0)
+2025-11-29 08:17:57,356 - conftest - INFO - Using cached dataset: /mnt/d/chillbot/prod_test/layer3_demos/data/locomo.json
+08:17:57 INFO Using cached dataset: /mnt/d/chillbot/prod_test/layer3_demos/data/locomo.json

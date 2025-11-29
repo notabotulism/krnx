@@ -1,0 +1,1700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KRNX - Temporal Memory Kernel for AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Evergreen Palette - Deep forest with cool undertones */
+            --bg-primary: #0f1612;
+            --bg-secondary: #151d18;
+            --bg-tertiary: #1c2620;
+            --text-primary: #e8ede9;
+            --text-secondary: #9aaa9e;
+            --text-muted: #687168;
+            --accent-primary: #4a9d6e;      /* Forest green */
+            --accent-secondary: #3d8a5f;    /* Deeper green */
+            --accent-highlight: #6bbd8a;    /* Bright moss */
+            --accent-warm: #c4956a;         /* Warm bark */
+            --accent-alert: #d4785c;        /* Autumn orange */
+            --accent-info: #5a9dad;         /* Cool stream */
+            --border-color: #2a362e;
+            --code-bg: #121a15;
+            --sidebar-width: 280px;
+            --nav-height: 64px;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+        
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        
+        /* Top Navigation */
+        .top-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: var(--nav-height);
+            background: rgba(13, 17, 23, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-highlight), var(--accent-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .logo-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-left: 12px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+        
+        .nav-links {
+            margin-left: auto;
+            display: flex;
+            gap: 24px;
+        }
+        
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        .nav-links a:hover { color: var(--text-primary); }
+        
+        .version-badge {
+            background: var(--bg-tertiary);
+            color: var(--accent-highlight);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+        }
+        
+        /* Layout */
+        .layout {
+            display: flex;
+            margin-top: var(--nav-height);
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: var(--nav-height);
+            width: var(--sidebar-width);
+            height: calc(100vh - var(--nav-height));
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: 20px 0;
+        }
+        
+        .sidebar-section {
+            padding: 0 16px;
+            margin-bottom: 24px;
+        }
+        
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            padding-left: 12px;
+        }
+        
+        .sidebar-link {
+            display: block;
+            padding: 8px 12px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+        
+        .sidebar-link:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        .sidebar-link.active {
+            background: rgba(74, 157, 110, 0.15);
+            color: var(--accent-highlight);
+        }
+        
+        .sidebar-link .method {
+            display: inline-block;
+            width: 50px;
+            font-size: 10px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+            margin-right: 8px;
+        }
+        
+        .method-get { color: var(--accent-highlight); }
+        .method-post { color: var(--accent-info); }
+        .method-put { color: var(--accent-warm); }
+        .method-delete { color: var(--accent-alert); }
+        
+        /* Main Content */
+        .main {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: calc(100vh - var(--nav-height));
+        }
+        
+        .content {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 48px 48px 120px;
+        }
+        
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 60px 0 80px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 60px;
+        }
+        
+        .hero h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        
+        .hero-h2 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+            background: linear-gradient(135deg, var(--accent-highlight), var(--accent-info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            white-space: nowrap;
+        }
+        
+        .hero h1 span {
+            background: linear-gradient(135deg, var(--accent-highlight), var(--accent-info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .hero-tagline {
+            font-size: 22px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            font-weight: 500;
+        }
+        
+        .hero-features {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+        
+        .hero-feature {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        
+        .hero-feature .icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .icon-green { background: rgba(74, 157, 110, 0.2); color: var(--accent-primary); }
+        .icon-blue { background: rgba(90, 157, 173, 0.2); color: var(--accent-info); }
+        .icon-purple { background: rgba(196, 149, 106, 0.2); color: var(--accent-warm); }
+        
+        /* Install Box */
+        .install-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px 32px;
+            display: inline-flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .install-box code {
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+            font-size: 15px;
+            color: var(--accent-highlight);
+        }
+        
+        .install-box .copy-btn {
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--text-secondary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .install-box .copy-btn:hover {
+            background: var(--accent-primary);
+            color: white;
+        }
+        
+        /* Section Headers */
+        h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            padding-top: 32px;
+            border-top: 1px solid var(--border-color);
+            margin-top: 48px;
+            letter-spacing: -0.5px;
+        }
+        
+        h2:first-of-type {
+            border-top: none;
+            margin-top: 0;
+            padding-top: 0;
+        }
+        
+        h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 40px;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+        
+        h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 32px;
+            margin-bottom: 12px;
+            color: var(--text-secondary);
+        }
+        
+        p {
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+        }
+        
+        /* Code Blocks */
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px 24px;
+            overflow-x: auto;
+            margin: 20px 0;
+            position: relative;
+        }
+        
+        pre code {
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            color: var(--text-primary);
+        }
+        
+        code {
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--accent-highlight);
+        }
+        
+        pre code { background: none; padding: 0; }
+        
+        /* Syntax Highlighting - Evergreen */
+        .keyword { color: var(--accent-info); }
+        .string { color: var(--accent-highlight); }
+        .comment { color: var(--text-muted); font-style: italic; }
+        .function { color: var(--accent-primary); }
+        .class { color: var(--accent-warm); }
+        .number { color: #8fbf9a; }
+        .decorator { color: var(--accent-warm); }
+        
+        /* API Endpoint Cards */
+        .endpoint {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin: 24px 0;
+            overflow: hidden;
+        }
+        
+        .endpoint-header {
+            display: flex;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            gap: 12px;
+        }
+        
+        .endpoint-method {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+            text-transform: uppercase;
+        }
+        
+        .endpoint-method.get { background: rgba(107, 189, 138, 0.15); color: var(--accent-highlight); }
+        .endpoint-method.post { background: rgba(90, 157, 173, 0.15); color: var(--accent-info); }
+        .endpoint-method.delete { background: rgba(212, 120, 92, 0.15); color: var(--accent-alert); }
+        
+        .endpoint-path {
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        
+        .endpoint-path .param {
+            color: var(--accent-warm);
+        }
+        
+        .endpoint-body {
+            padding: 20px;
+        }
+        
+        .endpoint-description {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        td { color: var(--text-secondary); }
+        
+        td code {
+            background: var(--bg-primary);
+            color: var(--accent-highlight);
+        }
+        
+        .param-required {
+            color: var(--accent-alert);
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .param-optional {
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+        
+        /* Info/Warning Boxes */
+        .callout {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: flex;
+            gap: 12px;
+            font-size: 14px;
+        }
+        
+        .callout-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        .callout-info {
+            background: rgba(90, 157, 173, 0.1);
+            border: 1px solid rgba(90, 157, 173, 0.3);
+            color: var(--accent-info);
+        }
+        
+        .callout-warning {
+            background: rgba(196, 149, 106, 0.1);
+            border: 1px solid rgba(196, 149, 106, 0.3);
+            color: var(--accent-warm);
+        }
+        
+        .callout-success {
+            background: rgba(74, 157, 110, 0.1);
+            border: 1px solid rgba(74, 157, 110, 0.3);
+            color: var(--accent-primary);
+        }
+        
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin: 32px 0;
+        }
+        
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.2s;
+        }
+        
+        .feature-card:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+        }
+        
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 16px;
+            background: rgba(74, 157, 110, 0.15);
+        }
+        
+        .feature-card h4 {
+            margin: 0 0 8px;
+            font-size: 16px;
+            color: var(--text-primary);
+        }
+        
+        .feature-card p {
+            font-size: 14px;
+            margin: 0;
+        }
+        
+        /* Architecture Diagram */
+        .architecture {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .arch-row {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .arch-box {
+            padding: 16px 24px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 500;
+            min-width: 120px;
+        }
+        
+        .arch-api { background: rgba(90, 157, 173, 0.2); border: 1px solid var(--accent-info); color: var(--accent-info); }
+        .arch-fabric { background: rgba(196, 149, 106, 0.2); border: 1px solid var(--accent-warm); color: var(--accent-warm); }
+        .arch-kernel { background: rgba(74, 157, 110, 0.2); border: 1px solid var(--accent-primary); color: var(--accent-primary); }
+        .arch-storage { background: rgba(107, 189, 138, 0.2); border: 1px solid var(--accent-highlight); color: var(--accent-highlight); }
+        
+        .arch-arrow {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 20px;
+            margin: 12px 0;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 0;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover { color: var(--text-primary); }
+        
+        .tab.active {
+            color: var(--accent-highlight);
+            border-bottom-color: var(--accent-highlight);
+        }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* Response Schema */
+        .schema {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 16px 0;
+        }
+        
+        .schema-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+        
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .badge-new { background: rgba(163, 113, 247, 0.2); color: var(--accent-purple); }
+        .badge-beta { background: rgba(210, 153, 34, 0.2); color: var(--accent-yellow); }
+        
+        /* List styles */
+        ul, ol {
+            margin: 16px 0;
+            padding-left: 24px;
+            color: var(--text-secondary);
+        }
+        
+        li { margin-bottom: 8px; }
+        li strong { color: var(--text-primary); }
+        
+        /* Anchor links */
+        a { color: var(--accent-blue); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        
+        /* Constitution Badge */
+        .constitution-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+            color: var(--accent-green);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; }
+            .content { padding: 24px; }
+            .hero h1 { font-size: 26px; white-space: normal; }
+            .hero-h2 { font-size: 26px; white-space: normal; }
+            .hero-features { flex-direction: column; gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <img src="data:image/webp;base64,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" alt="KRNX" style="height: 36px; width: auto;">
+        <span class="logo-sub">Temporal Memory Kernel</span>
+        <div class="nav-links">
+            <a href="#quickstart">Quickstart</a>
+            <a href="#api-reference">API Reference</a>
+            <a href="#sdk">Python SDK</a>
+            <a href="#enrichment">Enrichment</a>
+            <span class="version-badge">v0.3.10</span>
+        </div>
+    </nav>
+    
+    <div class="layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Getting Started</div>
+                <a href="#overview" class="sidebar-link">Overview</a>
+                <a href="#quickstart" class="sidebar-link">Quickstart</a>
+                <a href="#architecture" class="sidebar-link">Architecture</a>
+                <a href="#constitution" class="sidebar-link">Constitution</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">Python SDK</div>
+                <a href="#client" class="sidebar-link">KRNXClient</a>
+                <a href="#remember" class="sidebar-link">remember()</a>
+                <a href="#recall" class="sidebar-link">recall()</a>
+                <a href="#replay" class="sidebar-link">replay()</a>
+                <a href="#agents" class="sidebar-link">Multi-Agent</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">REST API</div>
+                <a href="#api-health" class="sidebar-link"><span class="method method-get">GET</span> Health</a>
+                <a href="#api-events-create" class="sidebar-link"><span class="method method-post">POST</span> Create Event</a>
+                <a href="#api-events-list" class="sidebar-link"><span class="method method-get">GET</span> List Events</a>
+                <a href="#api-events-get" class="sidebar-link"><span class="method method-get">GET</span> Get Event</a>
+                <a href="#api-state" class="sidebar-link"><span class="method method-get">GET</span> State</a>
+                <a href="#api-replay" class="sidebar-link"><span class="method method-get">GET</span> Replay</a>
+                <a href="#api-timeline" class="sidebar-link"><span class="method method-get">GET</span> Timeline</a>
+                <a href="#api-provenance" class="sidebar-link"><span class="method method-get">GET</span> Provenance</a>
+                <a href="#api-context" class="sidebar-link"><span class="method method-post">POST</span> Context</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">Enrichment</div>
+                <a href="#enrichment-overview" class="sidebar-link">Overview</a>
+                <a href="#salience" class="sidebar-link">Salience Scoring</a>
+                <a href="#relations" class="sidebar-link">Relations</a>
+                <a href="#retention" class="sidebar-link">Retention Classes</a>
+                <a href="#entities" class="sidebar-link">Entity Extraction</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">Advanced</div>
+                <a href="#kernel" class="sidebar-link">Kernel Internals</a>
+                <a href="#storage" class="sidebar-link">Storage Tiers</a>
+                <a href="#backpressure" class="sidebar-link">Backpressure</a>
+                <a href="#recovery" class="sidebar-link">Crash Recovery</a>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main">
+            <div class="content">
+                <!-- Hero -->
+                <section class="hero" id="overview">
+                    <h1>Reconstruct any moment. Debug any decision.</h1>
+                    <h2 class="hero-h2">Durable memory infrastructure in one import.</h2>
+                    <p class="hero-tagline">
+                        Temporal memory fabric for AI agents.
+                    </p>
+                    <div class="hero-features">
+                        <div class="hero-feature">
+                            <span class="icon icon-green">✓</span>
+                            Temporal replay
+                        </div>
+                        <div class="hero-feature">
+                            <span class="icon icon-blue">✓</span>
+                            Hash-chain provenance
+                        </div>
+                        <div class="hero-feature">
+                            <span class="icon icon-purple">✓</span>
+                            Multi-agent coordination
+                        </div>
+                    </div>
+                    <div class="install-box">
+                        <code>pip install krnx</code>
+                        <button class="copy-btn" onclick="navigator.clipboard.writeText('pip install krnx')">Copy</button>
+                    </div>
+                </section>
+                
+                <!-- Quickstart -->
+                <section id="quickstart">
+                    <h2>Quickstart</h2>
+                    <p>Get KRNX running in under 30 seconds. The only external dependency is Redis.</p>
+                    
+                    <h4>1. Start Redis</h4>
+<pre><code><span class="comment"># Using Docker</span>
+docker run -d --name krnx-redis -p 6379:6379 redis:alpine
+
+<span class="comment"># Or install locally</span>
+brew install redis && redis-server</code></pre>
+                    
+                    <h4>2. Initialize the Kernel</h4>
+<pre><code><span class="keyword">from</span> krnx <span class="keyword">import</span> <span class="class">KRNXClient</span>
+
+<span class="comment"># Local mode (embedded kernel)</span>
+client = <span class="class">KRNXClient</span>(
+    data_path=<span class="string">"./krnx-data"</span>,
+    redis_host=<span class="string">"localhost"</span>
+)
+
+<span class="comment"># Or remote mode (HTTP API)</span>
+client = <span class="class">KRNXClient</span>(base_url=<span class="string">"http://localhost:6380"</span>)</code></pre>
+                    
+                    <h4>3. Store and Recall Memories</h4>
+<pre><code><span class="comment"># Store a memory</span>
+event_id = client.<span class="function">remember</span>(
+    content={<span class="string">"query"</span>: <span class="string">"What's our Q4 budget?"</span>, <span class="string">"response"</span>: <span class="string">"$2.5M"</span>},
+    workspace=<span class="string">"acme-corp"</span>,
+    user=<span class="string">"alice"</span>,
+    channel=<span class="string">"finance"</span>
+)
+
+<span class="comment"># Recall recent memories</span>
+memories = client.<span class="function">recall</span>(
+    workspace=<span class="string">"acme-corp"</span>,
+    user=<span class="string">"alice"</span>,
+    limit=<span class="number">10</span>
+)
+
+<span class="comment"># Time-travel: What did we know yesterday?</span>
+yesterday = time.time() - <span class="number">86400</span>
+history = client.<span class="function">replay</span>(
+    workspace=<span class="string">"acme-corp"</span>,
+    timestamp=yesterday
+)</code></pre>
+                    
+                    <div class="callout callout-success">
+                        <span class="callout-icon">✓</span>
+                        <div><strong>That's it!</strong> You now have a temporal memory kernel that persists across sessions, supports time-travel queries, and automatically handles hash-chain provenance.</div>
+                    </div>
+                </section>
+                
+                <!-- Architecture -->
+                <section id="architecture">
+                    <h2>Architecture</h2>
+                    <p>KRNX is built as a three-layer stack: API, Fabric, and Kernel. Each layer has a single responsibility.</p>
+                    
+                    <div class="architecture">
+                        <div class="arch-row">
+                            <div class="arch-box arch-api">API Server<br><small>FastAPI · REST · WebSocket</small></div>
+                        </div>
+                        <div class="arch-arrow">↓</div>
+                        <div class="arch-row">
+                            <div class="arch-box arch-fabric">Memory Fabric<br><small>Context · Identity · Enrichment</small></div>
+                        </div>
+                        <div class="arch-arrow">↓</div>
+                        <div class="arch-row">
+                            <div class="arch-box arch-kernel">Kernel<br><small>Events · Replay · Provenance</small></div>
+                        </div>
+                        <div class="arch-arrow">↓</div>
+                        <div class="arch-row">
+                            <div class="arch-box arch-storage">STM (Redis)</div>
+                            <div class="arch-box arch-storage">LTM (SQLite)</div>
+                            <div class="arch-box arch-storage">Analytics (DuckDB)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon icon-green">⚡</div>
+                            <h4>STM — Hot Tier</h4>
+                            <p>Redis-backed short-term memory. Sub-millisecond writes, 24-hour retention, consumer groups for multi-agent coordination.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon icon-blue">💾</div>
+                            <h4>LTM — Warm Tier</h4>
+                            <p>SQLite with WAL mode. 30-day queryable storage, batch writes via executemany(), automatic archival to cold tier.</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon icon-purple">🔍</div>
+                            <h4>Enrichment Pipeline</h4>
+                            <p>Deterministic metadata enrichment. Salience scoring, relation detection, entity extraction—all without LLM calls.</p>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Constitution -->
+                <section id="constitution">
+                    <h2>Constitution</h2>
+                    <p>KRNX operates under a strict constitutional philosophy. These principles are inviolable.</p>
+                    
+                    <div class="callout callout-info">
+                        <span class="callout-icon">📜</span>
+                        <div>The Constitution ensures KRNX remains <strong>pure infrastructure</strong>—dumb, reliable, composable. We don't compete with memory frameworks; we empower them.</div>
+                    </div>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Principle</th>
+                                <th>Meaning</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Purity</strong></td>
+                                <td>The kernel remains simple, durable, minimal. No magic. No guessing. No hidden state.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Modularity</strong></td>
+                                <td>Every component stands alone. The stack composes. Nothing is mandatory.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Continuity</strong></td>
+                                <td>Agents can remember, replay, and evolve—reliably—across time.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Durability</strong></td>
+                                <td>Events are never lost. History remains retrievable. State is inspectable.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Transparency</strong></td>
+                                <td>Debuggability is sacred. Observability is necessary. Predictability is non-negotiable.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+                
+                <!-- Python SDK -->
+                <section id="sdk">
+                    <h2>Python SDK</h2>
+                    <p>The SDK provides a unified interface for both embedded (local) and remote (HTTP) deployments.</p>
+                </section>
+                
+                <section id="client">
+                    <h3>KRNXClient</h3>
+                    <p>The primary interface for interacting with KRNX. Supports both local and remote modes.</p>
+                    
+<pre><code><span class="keyword">from</span> krnx <span class="keyword">import</span> <span class="class">KRNXClient</span>
+
+<span class="comment"># Local mode — embedded kernel, direct Redis/SQLite access</span>
+client = <span class="class">KRNXClient</span>(
+    data_path=<span class="string">"./krnx-data"</span>,      <span class="comment"># SQLite storage path</span>
+    redis_host=<span class="string">"localhost"</span>,       <span class="comment"># Redis host</span>
+    redis_port=<span class="number">6379</span>,              <span class="comment"># Redis port</span>
+    default_workspace=<span class="string">"default"</span>, <span class="comment"># Default workspace ID</span>
+    enable_hash_chain=<span class="keyword">True</span>,      <span class="comment"># Cryptographic provenance</span>
+)
+
+<span class="comment"># Remote mode — HTTP API, can run anywhere</span>
+client = <span class="class">KRNXClient</span>(
+    base_url=<span class="string">"http://localhost:6380"</span>,
+    api_key=<span class="string">"sk-..."</span>,           <span class="comment"># Optional API key</span>
+    timeout=<span class="number">10.0</span>,               <span class="comment"># Request timeout</span>
+)
+
+<span class="comment"># Context manager for automatic cleanup</span>
+<span class="keyword">with</span> <span class="class">KRNXClient</span>(data_path=<span class="string">"./data"</span>) <span class="keyword">as</span> client:
+    client.remember(<span class="string">"Hello, KRNX!"</span>)</code></pre>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>data_path</code></td>
+                                <td>str</td>
+                                <td><span class="param-optional">optional</span> Path for SQLite storage. Triggers local mode.</td>
+                            </tr>
+                            <tr>
+                                <td><code>redis_host</code></td>
+                                <td>str</td>
+                                <td><span class="param-optional">optional</span> Redis host for local mode. Default: <code>"localhost"</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>base_url</code></td>
+                                <td>str</td>
+                                <td><span class="param-optional">optional</span> HTTP URL for remote mode. Triggers remote mode.</td>
+                            </tr>
+                            <tr>
+                                <td><code>default_workspace</code></td>
+                                <td>str</td>
+                                <td><span class="param-optional">optional</span> Default workspace for operations. Default: <code>"default"</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>enable_hash_chain</code></td>
+                                <td>bool</td>
+                                <td><span class="param-optional">optional</span> Enable SHA-256 hash-chain provenance. Default: <code>False</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+                
+                <section id="remember">
+                    <h3>remember()</h3>
+                    <p>Store a memory. The fundamental write operation.</p>
+                    
+<pre><code>event_id = client.<span class="function">remember</span>(
+    content={
+        <span class="string">"query"</span>: <span class="string">"Explain quantum computing"</span>,
+        <span class="string">"response"</span>: <span class="string">"Quantum computing uses qubits..."</span>,
+        <span class="string">"model"</span>: <span class="string">"claude-sonnet-4"</span>,
+        <span class="string">"tokens"</span>: <span class="number">1250</span>
+    },
+    workspace=<span class="string">"physics-tutor"</span>,
+    user=<span class="string">"student_42"</span>,
+    session=<span class="string">"session_abc123"</span>,
+    channel=<span class="string">"chat"</span>,
+    metadata={<span class="string">"topic"</span>: <span class="string">"quantum"</span>, <span class="string">"difficulty"</span>: <span class="string">"advanced"</span>},
+    ttl_seconds=<span class="number">86400</span>  <span class="comment"># Expire after 24 hours</span>
+)
+
+print(f<span class="string">"Stored: {event_id}"</span>)
+<span class="comment"># → Stored: evt_a1b2c3d4e5f6g7h8</span></code></pre>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>content</code></td>
+                                <td>str | dict</td>
+                                <td><span class="param-required">required</span> Memory content. Strings are wrapped as <code>{"text": "..."}</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>workspace</code></td>
+                                <td>str</td>
+                                <td><span class="param-optional">optional</span> Workspace ID. Default: <code>default_workspace</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>user</code></td>
+                                <td>str</td>
+                                <td><span class="param-optional">optional</span> User ID. Default: <code>"default"</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>channel</code></td>
+                                <td>str</td>
+                                <td><span class="param-optional">optional</span> Channel for filtering (e.g., <code>"chat"</code>, <code>"code"</code>)</td>
+                            </tr>
+                            <tr>
+                                <td><code>ttl_seconds</code></td>
+                                <td>int</td>
+                                <td><span class="param-optional">optional</span> Time-to-live. <code>None</code> = never expires.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <div class="callout callout-info">
+                        <span class="callout-icon">💡</span>
+                        <div><code>remember()</code> is non-blocking. Events are written to STM (Redis) immediately, then asynchronously persisted to LTM (SQLite) by the background worker.</div>
+                    </div>
+                </section>
+                
+                <section id="recall">
+                    <h3>recall()</h3>
+                    <p>Query memories. Supports time-range filtering and channel scoping.</p>
+                    
+<pre><code><span class="comment"># Get recent memories</span>
+memories = client.<span class="function">recall</span>(
+    workspace=<span class="string">"physics-tutor"</span>,
+    user=<span class="string">"student_42"</span>,
+    limit=<span class="number">20</span>
+)
+
+<span class="comment"># Filter by time range</span>
+one_hour_ago = time.time() - <span class="number">3600</span>
+recent = client.<span class="function">recall</span>(
+    workspace=<span class="string">"physics-tutor"</span>,
+    start_time=one_hour_ago,
+    end_time=time.time()
+)
+
+<span class="comment"># Filter by channel</span>
+code_memories = client.<span class="function">recall</span>(
+    workspace=<span class="string">"physics-tutor"</span>,
+    channel=<span class="string">"code"</span>
+)</code></pre>
+                    
+                    <p><strong>Returns:</strong> <code>List[Dict]</code> — Each memory as a dictionary with <code>event_id</code>, <code>content</code>, <code>timestamp</code>, <code>metadata</code>, etc.</p>
+                </section>
+                
+                <section id="replay">
+                    <h3>replay()</h3>
+                    <span class="badge badge-new">Differentiator</span>
+                    <p>Time-travel query. Reconstruct state at any point in history. <strong>This is what RAG cannot do.</strong></p>
+                    
+<pre><code><span class="comment"># What did we know at this exact moment?</span>
+point_in_time = <span class="number">1704067200.0</span>  <span class="comment"># Jan 1, 2024 00:00:00 UTC</span>
+
+history = client.<span class="function">replay</span>(
+    workspace=<span class="string">"trading-bot"</span>,
+    timestamp=point_in_time,
+    user=<span class="string">"algo_001"</span>
+)
+
+<span class="comment"># Events are returned in chronological order</span>
+<span class="keyword">for</span> event <span class="keyword">in</span> history:
+    print(f<span class="string">"{event['timestamp']}: {event['content']}"</span>)</code></pre>
+                    
+                    <div class="callout callout-success">
+                        <span class="callout-icon">🔮</span>
+                        <div><strong>Perfect for auditing and debugging.</strong> Replay exactly what an agent knew when it made a decision. No more "the model hallucinated"—you can prove what information was available.</div>
+                    </div>
+                </section>
+                
+                <section id="agents">
+                    <h3>Multi-Agent Coordination</h3>
+                    <p>KRNX uses Redis Streams consumer groups for coordinating multiple agents on shared memory.</p>
+                    
+<pre><code><span class="comment"># Create agent groups</span>
+client.<span class="function">create_agent_group</span>(
+    workspace=<span class="string">"project-alpha"</span>,
+    group=<span class="string">"coders"</span>
+)
+client.<span class="function">create_agent_group</span>(
+    workspace=<span class="string">"project-alpha"</span>,
+    group=<span class="string">"testers"</span>
+)
+
+<span class="comment"># Agents consume events from their group</span>
+events = client.<span class="function">consume</span>(
+    workspace=<span class="string">"project-alpha"</span>,
+    group=<span class="string">"coders"</span>,
+    agent_id=<span class="string">"coder_001"</span>,
+    count=<span class="number">10</span>,
+    block_ms=<span class="number">5000</span>  <span class="comment"># Wait up to 5s for new events</span>
+)
+
+<span class="comment"># Process and acknowledge</span>
+<span class="keyword">for</span> event <span class="keyword">in</span> events:
+    process(event)
+    client.<span class="function">ack</span>(
+        workspace=<span class="string">"project-alpha"</span>,
+        group=<span class="string">"coders"</span>,
+        message_id=event[<span class="string">'message_id'</span>]
+    )</code></pre>
+                </section>
+                
+                <!-- REST API Reference -->
+                <section id="api-reference">
+                    <h2>REST API Reference</h2>
+                    <p>The KRNX API follows REST conventions with JSON request/response bodies. All endpoints are prefixed with <code>/api/v1</code>.</p>
+                    
+                    <div class="callout callout-info">
+                        <span class="callout-icon">📡</span>
+                        <div>Run the API server: <code>python -m api_server.main</code> — defaults to port 6380.</div>
+                    </div>
+                </section>
+                
+                <section id="api-health">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/v1/health</span>
+                        </div>
+                        <div class="endpoint-body">
+                            <p class="endpoint-description">System health check. Returns status of Redis, SQLite, and the async worker.</p>
+                            
+                            <div class="schema">
+                                <div class="schema-title">Response</div>
+<pre><code>{
+  <span class="string">"data"</span>: {
+    <span class="string">"status"</span>: <span class="string">"healthy"</span>,
+    <span class="string">"version"</span>: <span class="string">"0.3.10"</span>,
+    <span class="string">"uptime_seconds"</span>: <span class="number">3621.5</span>,
+    <span class="string">"components"</span>: {
+      <span class="string">"redis"</span>: {<span class="string">"status"</span>: <span class="string">"healthy"</span>, <span class="string">"latency_ms"</span>: <span class="number">0.42</span>},
+      <span class="string">"ltm"</span>: {<span class="string">"status"</span>: <span class="string">"healthy"</span>, <span class="string">"warm_events"</span>: <span class="number">15420</span>},
+      <span class="string">"worker"</span>: {<span class="string">"status"</span>: <span class="string">"healthy"</span>, <span class="string">"queue_depth"</span>: <span class="number">12</span>}
+    }
+  },
+  <span class="string">"meta"</span>: {<span class="string">"duration_ms"</span>: <span class="number">2.31</span>}
+}</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="api-events-create">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="endpoint-method post">POST</span>
+                            <span class="endpoint-path">/api/v1/workspaces/<span class="param">{workspace_id}</span>/events</span>
+                        </div>
+                        <div class="endpoint-body">
+                            <p class="endpoint-description">Write a single event to memory. Returns immediately after STM write; LTM persistence is async.</p>
+                            
+                            <h4>Path Parameters</h4>
+                            <table>
+                                <tr>
+                                    <td><code>workspace_id</code></td>
+                                    <td>string</td>
+                                    <td><span class="param-required">required</span> Workspace identifier</td>
+                                </tr>
+                            </table>
+                            
+                            <h4>Request Body</h4>
+<pre><code>{
+  <span class="string">"user_id"</span>: <span class="string">"alice"</span>,
+  <span class="string">"content"</span>: {
+    <span class="string">"query"</span>: <span class="string">"What is KRNX?"</span>,
+    <span class="string">"response"</span>: <span class="string">"A temporal memory kernel for AI."</span>
+  },
+  <span class="string">"channel"</span>: <span class="string">"chat"</span>,
+  <span class="string">"event_type"</span>: <span class="string">"message"</span>,
+  <span class="string">"retention_class"</span>: <span class="string">"standard"</span>,
+  <span class="string">"metadata"</span>: {<span class="string">"model"</span>: <span class="string">"claude-sonnet-4"</span>}
+}</code></pre>
+                            
+                            <h4>Response</h4>
+<pre><code>{
+  <span class="string">"data"</span>: {
+    <span class="string">"event_id"</span>: <span class="string">"evt_a1b2c3d4e5f6g7h8"</span>,
+    <span class="string">"stream_id"</span>: <span class="string">"1704067200123-0"</span>,
+    <span class="string">"timestamp"</span>: <span class="number">1704067200.123</span>
+  },
+  <span class="string">"meta"</span>: {<span class="string">"duration_ms"</span>: <span class="number">0.87</span>}
+}</code></pre>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="api-events-list">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/v1/workspaces/<span class="param">{workspace_id}</span>/events</span>
+                        </div>
+                        <div class="endpoint-body">
+                            <p class="endpoint-description">Query events with filtering and pagination.</p>
+                            
+                            <h4>Query Parameters</h4>
+                            <table>
+                                <tr><td><code>user_id</code></td><td>string</td><td>Filter by user</td></tr>
+                                <tr><td><code>channel</code></td><td>string</td><td>Filter by channel</td></tr>
+                                <tr><td><code>start</code></td><td>float</td><td>Start timestamp (inclusive)</td></tr>
+                                <tr><td><code>end</code></td><td>float</td><td>End timestamp (inclusive)</td></tr>
+                                <tr><td><code>limit</code></td><td>int</td><td>Max results (default: 100, max: 1000)</td></tr>
+                                <tr><td><code>cursor</code></td><td>string</td><td>Pagination cursor</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="api-state">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/v1/workspaces/<span class="param">{workspace_id}</span>/state</span>
+                        </div>
+                        <div class="endpoint-body">
+                            <p class="endpoint-description">
+                                <span class="badge badge-new">Killer Feature</span>
+                                Reconstruct workspace state at any point in time. This is KRNX's differentiator—RAG cannot do this.
+                            </p>
+                            
+                            <h4>Query Parameters</h4>
+                            <table>
+                                <tr>
+                                    <td><code>as_of</code></td>
+                                    <td>float</td>
+                                    <td><span class="param-optional">optional</span> Unix timestamp. Returns state as it existed at this moment.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>user_id</code></td>
+                                    <td>string</td>
+                                    <td><span class="param-optional">optional</span> Scope to specific user</td>
+                                </tr>
+                            </table>
+                            
+                            <h4>Response</h4>
+<pre><code>{
+  <span class="string">"data"</span>: {
+    <span class="string">"workspace_id"</span>: <span class="string">"trading-bot"</span>,
+    <span class="string">"as_of"</span>: <span class="number">1704067200.0</span>,
+    <span class="string">"event_count"</span>: <span class="number">1847</span>,
+    <span class="string">"users"</span>: [<span class="string">"algo_001"</span>, <span class="string">"algo_002"</span>],
+    <span class="string">"channels"</span>: [<span class="string">"trades"</span>, <span class="string">"alerts"</span>],
+    <span class="string">"latest_event"</span>: {...},
+    <span class="string">"earliest_event"</span>: {...}
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="api-replay">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/v1/workspaces/<span class="param">{workspace_id}</span>/replay</span>
+                        </div>
+                        <div class="endpoint-body">
+                            <p class="endpoint-description">Replay events in a time range. Returns events in chronological order for time-travel debugging.</p>
+                            
+                            <h4>Query Parameters</h4>
+                            <table>
+                                <tr><td><code>start</code></td><td>float</td><td><span class="param-required">required</span> Start timestamp</td></tr>
+                                <tr><td><code>end</code></td><td>float</td><td><span class="param-required">required</span> End timestamp</td></tr>
+                                <tr><td><code>user_id</code></td><td>string</td><td>Filter by user</td></tr>
+                                <tr><td><code>channel</code></td><td>string</td><td>Filter by channel</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="api-provenance">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/v1/workspaces/<span class="param">{workspace_id}</span>/events/<span class="param">{event_id}</span>/provenance</span>
+                        </div>
+                        <div class="endpoint-body">
+                            <p class="endpoint-description">Get the hash-chain provenance for an event. Walks the chain from event back to genesis.</p>
+                            
+                            <h4>Response</h4>
+<pre><code>{
+  <span class="string">"data"</span>: {
+    <span class="string">"event_id"</span>: <span class="string">"evt_xyz789"</span>,
+    <span class="string">"chain"</span>: [
+      {<span class="string">"event_id"</span>: <span class="string">"evt_abc123"</span>, <span class="string">"hash"</span>: <span class="string">"a1b2c3..."</span>},
+      {<span class="string">"event_id"</span>: <span class="string">"evt_def456"</span>, <span class="string">"hash"</span>: <span class="string">"d4e5f6..."</span>},
+      {<span class="string">"event_id"</span>: <span class="string">"evt_xyz789"</span>, <span class="string">"hash"</span>: <span class="string">"x7y8z9..."</span>}
+    ],
+    <span class="string">"depth"</span>: <span class="number">3</span>,
+    <span class="string">"verified"</span>: <span class="keyword">true</span>,
+    <span class="string">"complete"</span>: <span class="keyword">true</span>
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="api-context">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="endpoint-method post">POST</span>
+                            <span class="endpoint-path">/api/v1/workspaces/<span class="param">{workspace_id}</span>/context</span>
+                        </div>
+                        <div class="endpoint-body">
+                            <p class="endpoint-description">Build LLM-ready context from memories. Token-aware with automatic truncation.</p>
+                            
+                            <h4>Request Body</h4>
+<pre><code>{
+  <span class="string">"query"</span>: <span class="string">"What was our Q4 budget discussion?"</span>,
+  <span class="string">"user_id"</span>: <span class="string">"alice"</span>,
+  <span class="string">"max_tokens"</span>: <span class="number">4000</span>,
+  <span class="string">"format"</span>: <span class="string">"messages"</span>  <span class="comment">// "text" | "json" | "messages"</span>
+}</code></pre>
+                            
+                            <h4>Response (format: "messages")</h4>
+<pre><code>{
+  <span class="string">"data"</span>: {
+    <span class="string">"messages"</span>: [
+      {
+        <span class="string">"role"</span>: <span class="string">"system"</span>,
+        <span class="string">"content"</span>: <span class="string">"Relevant context from memory:\n\n[1] 2h ago: Q4 budget is $2.5M...\n[2] 1d ago: CFO approved..."</span>
+      },
+      {
+        <span class="string">"role"</span>: <span class="string">"user"</span>,
+        <span class="string">"content"</span>: <span class="string">"What was our Q4 budget discussion?"</span>
+      }
+    ],
+    <span class="string">"token_count"</span>: <span class="number">847</span>,
+    <span class="string">"memories_included"</span>: <span class="number">5</span>
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Enrichment -->
+                <section id="enrichment">
+                    <h2>Enrichment Pipeline</h2>
+                    <p>KRNX's enrichment layer transforms raw events into intelligent memory through deterministic metadata computation. <strong>No LLMs. No hallucination. Just composable, transparent scoring.</strong></p>
+                    
+                    <div class="constitution-badge">
+                        <span>✓</span> Constitution-Safe: Pure, deterministic, no side effects
+                    </div>
+                </section>
+                
+                <section id="enrichment-overview">
+                    <h3>Overview</h3>
+                    <p>The enrichment pipeline runs 5 stages in order:</p>
+                    
+                    <ol>
+                        <li><strong>Temporal</strong> — Episode threading, time gaps</li>
+                        <li><strong>Salience</strong> — Importance scoring (semantic + recency + frequency + structural)</li>
+                        <li><strong>Relations</strong> — Detect supersedes, contradicts, duplicates, expands_on</li>
+                        <li><strong>Entities</strong> — Extract @mentions, projects, files, concepts</li>
+                        <li><strong>Retention</strong> — Classify as ephemeral, durable, consolidation_candidate</li>
+                    </ol>
+                    
+<pre><code><span class="keyword">from</span> enrichment <span class="keyword">import</span> <span class="class">MetadataEnricher</span>, <span class="class">EnrichmentContext</span>
+
+enricher = <span class="class">MetadataEnricher</span>()
+
+context = <span class="class">EnrichmentContext</span>(
+    previous_event=last_event,
+    workspace_events=recent_events,
+    similarity_scores={<span class="string">"evt_123"</span>: <span class="number">0.87</span>, <span class="string">"evt_456"</span>: <span class="number">0.72</span>}
+)
+
+metadata = enricher.<span class="function">enrich</span>(event, context)
+event.metadata.update(metadata.to_dict())</code></pre>
+                </section>
+                
+                <section id="salience">
+                    <h3>Salience Scoring</h3>
+                    <p>Salience determines which memories surface during recall. Higher salience = more likely to be retrieved.</p>
+                    
+                    <h4>Components</h4>
+                    <table>
+                        <thead>
+                            <tr><th>Component</th><th>Weight</th><th>Description</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>semantic</code></td>
+                                <td>40%</td>
+                                <td>Similarity to recent queries</td>
+                            </tr>
+                            <tr>
+                                <td><code>recency</code></td>
+                                <td>30%</td>
+                                <td>Exponential decay (24h half-life)</td>
+                            </tr>
+                            <tr>
+                                <td><code>frequency</code></td>
+                                <td>15%</td>
+                                <td>Logarithmic scaling of access count</td>
+                            </tr>
+                            <tr>
+                                <td><code>structural</code></td>
+                                <td>15%</td>
+                                <td>Position-based: episode boundaries, corrections, density</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+<pre><code><span class="keyword">from</span> enrichment <span class="keyword">import</span> <span class="class">SalienceEngine</span>, <span class="class">SalienceMethod</span>
+
+engine = <span class="class">SalienceEngine</span>()
+
+result = engine.<span class="function">compute</span>(
+    event_id=<span class="string">"evt_123"</span>,
+    timestamp=event.timestamp,
+    access_count=<span class="number">5</span>,
+    avg_similarity=<span class="number">0.82</span>,
+    structural_score=<span class="number">0.6</span>,
+    method=<span class="class">SalienceMethod</span>.COMPOSITE
+)
+
+print(result.to_spec_dict())
+<span class="comment"># {
+#   "semantic": 0.82,
+#   "recency": 0.65,
+#   "frequency": 0.28,
+#   "structural": 0.60,
+#   "final": 0.67
+# }</span></code></pre>
+                </section>
+                
+                <section id="relations">
+                    <h3>Relation Detection</h3>
+                    <p>The core insight: <strong>embedding similarity alone fails critical memory cases</strong>. Two events can be highly similar but have opposite meanings ("approved" vs "not approved").</p>
+                    
+                    <p>KRNX uses multi-signal feature extraction to detect:</p>
+                    
+                    <table>
+                        <thead>
+                            <tr><th>Relation</th><th>Conditions</th><th>Example</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>duplicates</code></td>
+                                <td>sim ≥ 0.95, no contradiction</td>
+                                <td>Same message sent twice</td>
+                            </tr>
+                            <tr>
+                                <td><code>supersedes</code></td>
+                                <td>sim ≥ 0.70, contradiction, newer</td>
+                                <td>"Budget is $75K" supersedes "Budget is $50K"</td>
+                            </tr>
+                            <tr>
+                                <td><code>contradicts</code></td>
+                                <td>sim ≥ 0.70, contradiction, different actor</td>
+                                <td>Alice: "approved" vs Bob: "rejected"</td>
+                            </tr>
+                            <tr>
+                                <td><code>expands_on</code></td>
+                                <td>sim 0.50-0.90, entity overlap</td>
+                                <td>Follow-up with more details</td>
+                            </tr>
+                            <tr>
+                                <td><code>replies_to</code></td>
+                                <td>Temporal proximity, same episode</td>
+                                <td>Direct response in conversation</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h4>Contradiction Signals</h4>
+                    <p>These signals fire when events conflict:</p>
+                    <ul>
+                        <li><strong>negation_mismatch</strong> — "is approved" vs "is not approved"</li>
+                        <li><strong>numeric_mismatch</strong> — "$50K" vs "$75K"</li>
+                        <li><strong>temporal_mismatch</strong> — "meeting today" vs "meeting tomorrow"</li>
+                        <li><strong>antonym_detected</strong> — "enabled" vs "disabled"</li>
+                        <li><strong>cancellation_detected</strong> — "actually", "scratch that", "correction"</li>
+                    </ul>
+                    
+                    <div class="callout callout-warning">
+                        <span class="callout-icon">⚠️</span>
+                        <div><strong>strict_contradiction</strong> fires when 2+ signals are present. This indicates high-confidence conflict and triggers special handling (always retained, boosted salience).</div>
+                    </div>
+                </section>
+                
+                <section id="retention">
+                    <h3>Retention Classification</h3>
+                    <p>KRNX classifies events using a <strong>drift × salience matrix</strong>. Drift measures how much context has changed since the event.</p>
+                    
+                    <div class="architecture">
+                        <table style="margin: 0; text-align: center;">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th style="text-align: center;">Low Salience</th>
+                                    <th style="text-align: center;">High Salience</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>High Drift</strong></td>
+                                    <td style="background: rgba(247, 129, 102, 0.2); color: var(--accent-orange);">ephemeral</td>
+                                    <td style="background: rgba(210, 153, 34, 0.2); color: var(--accent-yellow);">consolidation_candidate</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Low Drift</strong></td>
+                                    <td style="background: rgba(88, 166, 255, 0.2); color: var(--accent-blue);">merge_candidate</td>
+                                    <td style="background: rgba(63, 185, 80, 0.2); color: var(--accent-green);">durable</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <p><strong>Override:</strong> Events with <code>strict_contradiction</code> are always classified as <code>durable</code>.</p>
+                </section>
+                
+                <section id="entities">
+                    <h3>Entity Extraction</h3>
+                    <p>Pure regex-based extraction—no LLM, fully deterministic.</p>
+                    
+<pre><code><span class="keyword">from</span> enrichment <span class="keyword">import</span> <span class="class">EntityExtractor</span>
+
+extractor = <span class="class">EntityExtractor</span>()
+
+entities = extractor.<span class="function">extract</span>(event.content)
+<span class="comment"># [
+#   Entity(type=USER, id="alice", raw="@alice"),
+#   Entity(type=PROJECT, id="project_alpha", raw="Project Alpha"),
+#   Entity(type=FILE, id="/src/main.py", raw="/src/main.py"),
+#   Entity(type=CONCEPT, id="authentication", raw="#authentication")
+# ]</span></code></pre>
+                    
+                    <table>
+                        <thead><tr><th>Type</th><th>Pattern Examples</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>USER</code></td><td>@username, user:xxx</td></tr>
+                            <tr><td><code>PROJECT</code></td><td>project:xxx, Project Alpha</td></tr>
+                            <tr><td><code>FILE</code></td><td>/path/to/file, file.py</td></tr>
+                            <tr><td><code>URL</code></td><td>https://...</td></tr>
+                            <tr><td><code>CODE</code></td><td>ClassName, function_call()</td></tr>
+                            <tr><td><code>CONCEPT</code></td><td>#hashtag, [tag]</td></tr>
+                        </tbody>
+                    </table>
+                </section>
+                
+                <!-- Kernel Internals -->
+                <section id="kernel">
+                    <h2>Kernel Internals</h2>
+                    <p>For those who want to understand (or extend) the internals.</p>
+                </section>
+                
+                <section id="storage">
+                    <h3>Storage Tiers</h3>
+                    
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <h4>STM (Redis)</h4>
+                            <ul>
+                                <li>24-hour retention</li>
+                                <li>&lt;1ms writes via pipeline</li>
+                                <li>Consumer groups for multi-agent</li>
+                                <li>Connection pooling (200 max)</li>
+                            </ul>
+                        </div>
+                        <div class="feature-card">
+                            <h4>LTM Warm (SQLite)</h4>
+                            <ul>
+                                <li>30-day queryable storage</li>
+                                <li>WAL mode, 64MB cache</li>
+                                <li>executemany() for 10-50x faster batch writes</li>
+                                <li>Disabled autocheckpoint in high-throughput mode</li>
+                            </ul>
+                        </div>
+                        <div class="feature-card">
+                            <h4>LTM Cold (Archive)</h4>
+                            <ul>
+                                <li>Compressed (zlib level 6)</li>
+                                <li>Forever retention</li>
+                                <li>Automatic archival from warm tier</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="backpressure">
+                    <h3>Backpressure System</h3>
+                    <p>KRNX protects itself from overload with hysteresis-based backpressure.</p>
+                    
+                    <table>
+                        <thead><tr><th>Metric</th><th>Engage Threshold</th><th>Recovery Threshold</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td><code>queue_depth</code></td>
+                                <td>50,000 events</td>
+                                <td>37,500 events (75%)</td>
+                            </tr>
+                            <tr>
+                                <td><code>lag_seconds</code></td>
+                                <td>30 seconds</td>
+                                <td>22.5 seconds (75%)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <p>When backpressure engages, writes throw <code>BackpressureError</code>. The 25% hysteresis gap prevents oscillation.</p>
+                    
+<pre><code><span class="keyword">from</span> krnx <span class="keyword">import</span> <span class="class">BackpressureError</span>
+
+<span class="keyword">try</span>:
+    client.remember(content)
+<span class="keyword">except</span> <span class="class">BackpressureError</span>:
+    <span class="comment"># System is overloaded, back off and retry</span>
+    time.sleep(<span class="number">1</span>)
+    client.remember(content)</code></pre>
+                </section>
+                
+                <section id="recovery">
+                    <h3>Crash Recovery</h3>
+                    <p>KRNX handles worker crashes gracefully via Redis Streams pending message reclamation.</p>
+                    
+<pre><code><span class="keyword">from</span> krnx.recovery <span class="keyword">import</span> run_recovery
+<span class="keyword">from</span> krnx.connection_pool <span class="keyword">import</span> get_redis_client
+
+<span class="comment"># Run at application startup</span>
+result = <span class="function">run_recovery</span>(
+    redis_client=<span class="function">get_redis_client</span>(),
+    stream=<span class="string">"krnx:ltm:queue"</span>,
+    group=<span class="string">"krnx-ltm-workers"</span>,
+    idle_timeout_ms=<span class="number">300000</span>  <span class="comment"># 5 minutes</span>
+)
+
+print(f<span class="string">"Reclaimed {result['messages_reclaimed']} messages from {len(result['dead_consumers'])} dead consumers"</span>)</code></pre>
+                </section>
+                
+                <!-- Footer -->
+                <section style="text-align: center; padding: 60px 0; border-top: 1px solid var(--border-color); margin-top: 60px;">
+                    <p style="color: var(--text-muted); font-size: 14px;">
+                        KRNX v0.3.10 · Built for agents that remember · 
+                        <a href="https://github.com/your-repo/krnx">GitHub</a>
+                    </p>
+                </section>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+        
+        // Active sidebar link on scroll
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    document.querySelectorAll('.sidebar-link').forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === '#' + entry.target.id) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        }, { threshold: 0.3, rootMargin: '-80px 0px -70% 0px' });
+        
+        document.querySelectorAll('section[id]').forEach(section => {
+            observer.observe(section);
+        });
+    </script>
+</body>
+</html>

@@ -1,7 +1,14 @@
 """
-KRNX LTM - Long-Term Memory (SQLite) - OPTIMIZED
+KRNX LTM - Long-Term Memory (SQLite) - v0.4.0 (Hash Chain Support)
 
-PERFORMANCE FIXES:
+NEW IN v0.4.0:
+- Added 'hash' column to events table for O(1) hash lookups
+- get_event_by_hash() - retrieve event by computed hash
+- verify_hash_chain() - verify entire hash chain integrity
+- replay_to_timestamp() - temporal replay for time-travel queries
+- Auto-migration for existing databases (adds hash column if missing)
+
+PERFORMANCE FIXES (from v0.3.x):
 1. Use executemany() instead of execute() loop - 10-50x faster
 2. Disable WAL autocheckpoint during batch writes
 3. Manual checkpoint on close/drain
@@ -79,6 +86,8 @@ class LTM:
     """
     Long-Term Memory using SQLite dual-tier storage.
     
+    v0.4.0: Added hash column for hash-chain verification support.
+    
     OPTIMIZED for high-throughput batch writes:
     - executemany() for batch inserts (10-50x faster)
     - Disabled autocheckpoint during batch mode
@@ -94,7 +103,7 @@ class LTM:
         archival_interval_hours: int = 24,
         enable_auto_snapshots: bool = False,
         snapshot_interval_hours: int = 168,
-        high_throughput_mode: bool = True,  # NEW: Enable optimizations
+        high_throughput_mode: bool = True,
     ):
         """
         Initialize LTM with dual-tier storage.
@@ -133,6 +142,7 @@ class LTM:
         # Initialize
         self._connect()
         self._init_schemas()
+        self._migrate_schema()  # v0.4.0: Add hash column if missing
         
         # Write lock for thread safety
         self._write_lock = threading.Lock()
@@ -148,7 +158,7 @@ class LTM:
         if enable_auto_snapshots:
             self.start_snapshot_worker(snapshot_interval_hours)
         
-        print(f"[OK] LTM initialized at {data_path}")
+        print(f"[OK] LTM v0.4.0 initialized at {data_path}")
         print(f"   Warm tier: {self.db_path}")
         print(f"   Cold tier: {self.archive_db_path}")
         if high_throughput_mode:
@@ -164,7 +174,7 @@ class LTM:
         self.db = sqlite3.connect(
             self.db_path,
             check_same_thread=False,
-            timeout=30.0,  # Increased from 10
+            timeout=30.0,
             isolation_level=None  # Autocommit mode for explicit transactions
         )
         self.db.row_factory = sqlite3.Row
@@ -197,7 +207,7 @@ class LTM:
     
     def _init_schemas(self):
         """Initialize database schemas"""
-        # === WARM TIER SCHEMA ===
+        # === WARM TIER SCHEMA (v0.4.0: includes hash column) ===
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS events (
                 event_id TEXT PRIMARY KEY,
@@ -208,6 +218,7 @@ class LTM:
                 timestamp REAL NOT NULL,
                 created_at REAL NOT NULL,
                 previous_hash TEXT,
+                hash TEXT,
                 channel TEXT,
                 ttl_seconds INTEGER,
                 retention_class TEXT,
@@ -227,6 +238,15 @@ class LTM:
             CREATE INDEX IF NOT EXISTS idx_events_channel
                 ON events(channel);
             
+            CREATE INDEX IF NOT EXISTS idx_events_hash
+                ON events(hash);
+            
+            CREATE INDEX IF NOT EXISTS idx_events_previous_hash
+                ON events(previous_hash);
+            
+            CREATE INDEX IF NOT EXISTS idx_events_workspace_user_time
+                ON events(workspace_id, user_id, timestamp DESC);
+            
             CREATE TABLE IF NOT EXISTS snapshots (
                 snapshot_id TEXT PRIMARY KEY,
                 workspace_id TEXT NOT NULL,
@@ -243,7 +263,7 @@ class LTM:
                 ON snapshots(workspace_id, timestamp DESC);
         """)
         
-        # === COLD TIER SCHEMA ===
+        # === COLD TIER SCHEMA (v0.4.0: includes hash column) ===
         self.archive_db.executescript("""
             CREATE TABLE IF NOT EXISTS events_archive (
                 event_id TEXT PRIMARY KEY,
@@ -254,6 +274,7 @@ class LTM:
                 metadata_compressed BLOB,
                 timestamp REAL NOT NULL,
                 previous_hash TEXT,
+                hash TEXT,
                 archived_at REAL NOT NULL,
                 compression_ratio REAL,
                 CHECK (timestamp > 0)
@@ -267,27 +288,72 @@ class LTM:
             
             CREATE INDEX IF NOT EXISTS idx_archive_timestamp 
                 ON events_archive(timestamp);
+            
+            CREATE INDEX IF NOT EXISTS idx_archive_hash
+                ON events_archive(hash);
+            
+            CREATE INDEX IF NOT EXISTS idx_archive_previous_hash
+                ON events_archive(previous_hash);
         """)
         
         self.db.commit()
         self.archive_db.commit()
     
+    def _migrate_schema(self):
+        """
+        v0.4.0: Migrate existing databases to add hash column.
+        
+        Safe to run multiple times - only adds column if missing.
+        """
+        try:
+            # Check if hash column exists in warm tier
+            cursor = self.db.execute("PRAGMA table_info(events)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'hash' not in columns:
+                logger.info("[MIGRATE] Adding 'hash' column to events table...")
+                with self._write_lock:
+                    self.db.execute("ALTER TABLE events ADD COLUMN hash TEXT")
+                    self.db.execute("CREATE INDEX IF NOT EXISTS idx_events_hash ON events(hash)")
+                    self.db.execute("CREATE INDEX IF NOT EXISTS idx_events_previous_hash ON events(previous_hash)")
+                    self.db.execute("CREATE INDEX IF NOT EXISTS idx_events_workspace_user_time ON events(workspace_id, user_id, timestamp DESC)")
+                    self.db.commit()
+                logger.info("[MIGRATE] Warm tier migration complete")
+            
+            # Check cold tier
+            cursor = self.archive_db.execute("PRAGMA table_info(events_archive)")
+            archive_columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'hash' not in archive_columns:
+                logger.info("[MIGRATE] Adding 'hash' column to events_archive table...")
+                self.archive_db.execute("ALTER TABLE events_archive ADD COLUMN hash TEXT")
+                self.archive_db.execute("CREATE INDEX IF NOT EXISTS idx_archive_hash ON events_archive(hash)")
+                self.archive_db.execute("CREATE INDEX IF NOT EXISTS idx_archive_previous_hash ON events_archive(previous_hash)")
+                self.archive_db.commit()
+                logger.info("[MIGRATE] Cold tier migration complete")
+                
+        except Exception as e:
+            logger.warning(f"[MIGRATE] Schema migration check: {e}")
+    
     # ==============================================
-    # EVENT STORAGE - OPTIMIZED
+    # EVENT STORAGE - OPTIMIZED (v0.4.0: stores hash)
     # ==============================================
     
     def store_event(self, event: Event) -> bool:
         """Store single event in warm tier."""
         try:
+            # Compute hash for storage
+            event_hash = event.compute_hash()
+            
             with self._write_lock:
                 self.db.execute("BEGIN TRANSACTION")
                 self.db.execute("""
                     INSERT OR REPLACE INTO events (
                         event_id, workspace_id, user_id, session_id,
                         content, timestamp, created_at,
-                        previous_hash, channel, ttl_seconds, retention_class,
+                        previous_hash, hash, channel, ttl_seconds, retention_class,
                         metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     event.event_id,
                     event.workspace_id,
@@ -297,6 +363,7 @@ class LTM:
                     event.timestamp,
                     event.created_at,
                     event.previous_hash,
+                    event_hash,
                     event.channel,
                     event.ttl_seconds,
                     event.retention_class,
@@ -317,16 +384,13 @@ class LTM:
         """
         Store multiple events using executemany() - MUCH FASTER.
         
-        OLD: Loop with execute() = 100 prepare+execute cycles
-        NEW: executemany() = 1 prepare + 100 execute cycles
-        
-        Speedup: 10-50x faster for batch inserts.
+        v0.4.0: Now computes and stores hash for each event.
         """
         if not events:
             return 0
         
         try:
-            # Prepare data tuples
+            # Prepare data tuples (with hash computation)
             data = [
                 (
                     event.event_id,
@@ -337,6 +401,7 @@ class LTM:
                     event.timestamp,
                     event.created_at,
                     event.previous_hash,
+                    event.compute_hash(),  # v0.4.0: Compute hash
                     event.channel,
                     event.ttl_seconds,
                     event.retention_class,
@@ -353,9 +418,9 @@ class LTM:
                     INSERT OR REPLACE INTO events (
                         event_id, workspace_id, user_id, session_id,
                         content, timestamp, created_at,
-                        previous_hash, channel, ttl_seconds, retention_class,
+                        previous_hash, hash, channel, ttl_seconds, retention_class,
                         metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, data)
                 
                 self.db.commit()
@@ -383,7 +448,7 @@ class LTM:
         """
         Store pre-serialized events using executemany().
         
-        Used by async worker to avoid deserialize→re-serialize cycle.
+        v0.4.0: Computes hash from deserialized event data.
         """
         if not event_jsons:
             return 0
@@ -402,6 +467,24 @@ class LTM:
                 if isinstance(metadata_json, dict):
                     metadata_json = json.dumps(metadata_json)
                 
+                # Reconstruct Event to compute hash
+                from chillbot.kernel.models import Event
+                temp_event = Event(
+                    event_id=event_dict['event_id'],
+                    workspace_id=event_dict['workspace_id'],
+                    user_id=event_dict['user_id'],
+                    session_id=event_dict['session_id'],
+                    content=event_dict['content'] if isinstance(event_dict['content'], dict) else json.loads(event_dict['content']),
+                    timestamp=event_dict['timestamp'],
+                    created_at=event_dict['created_at'],
+                    previous_hash=event_dict.get('previous_hash'),
+                    channel=event_dict.get('channel'),
+                    ttl_seconds=event_dict.get('ttl_seconds'),
+                    retention_class=event_dict.get('retention_class'),
+                    metadata=event_dict.get('metadata') or {},
+                )
+                event_hash = temp_event.compute_hash()
+                
                 data.append((
                     event_dict['event_id'],
                     event_dict['workspace_id'],
@@ -411,6 +494,7 @@ class LTM:
                     event_dict['timestamp'],
                     event_dict['created_at'],
                     event_dict.get('previous_hash'),
+                    event_hash,
                     event_dict.get('channel'),
                     event_dict.get('ttl_seconds'),
                     event_dict.get('retention_class'),
@@ -424,9 +508,9 @@ class LTM:
                     INSERT OR REPLACE INTO events (
                         event_id, workspace_id, user_id, session_id,
                         content, timestamp, created_at,
-                        previous_hash, channel, ttl_seconds, retention_class,
+                        previous_hash, hash, channel, ttl_seconds, retention_class,
                         metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, data)
                 
                 self.db.commit()
@@ -504,7 +588,7 @@ class LTM:
         query = f"""
             SELECT * FROM events
             WHERE {where_clause}
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             LIMIT ?
         """
         
@@ -520,6 +604,31 @@ class LTM:
         
         if row:
             return self._row_to_event(row)
+        return None
+    
+    def get_event_by_hash(self, hash: str) -> Optional[Event]:
+        """
+        v0.4.0: Get event by its computed hash.
+        
+        O(1) lookup via hash index.
+        """
+        row = self.db.execute(
+            "SELECT * FROM events WHERE hash = ?",
+            (hash,)
+        ).fetchone()
+        
+        if row:
+            return self._row_to_event(row)
+        
+        # Also check archive
+        archive_row = self.archive_db.execute(
+            "SELECT * FROM events_archive WHERE hash = ?",
+            (hash,)
+        ).fetchone()
+        
+        if archive_row:
+            return self._archive_row_to_event(archive_row)
+        
         return None
     
     def _row_to_event(self, row: sqlite3.Row) -> Event:
@@ -546,6 +655,175 @@ class LTM:
             retention_class=row['retention_class'] if 'retention_class' in row.keys() else None,
             metadata=metadata or {},
         )
+    
+    def _archive_row_to_event(self, row: sqlite3.Row) -> Event:
+        """Convert archive row to Event object (decompresses content)."""
+        content_compressed = row['content_compressed']
+        content = json.loads(zlib.decompress(content_compressed).decode('utf-8'))
+        
+        metadata = {}
+        if row['metadata_compressed']:
+            metadata = json.loads(zlib.decompress(row['metadata_compressed']).decode('utf-8'))
+        
+        return Event(
+            event_id=row['event_id'],
+            workspace_id=row['workspace_id'],
+            user_id=row['user_id'],
+            session_id=row['session_id'],
+            content=content,
+            timestamp=row['timestamp'],
+            created_at=row['timestamp'],  # archived_at used as proxy
+            previous_hash=row['previous_hash'],
+            metadata=metadata,
+        )
+    
+    # ==============================================
+    # HASH CHAIN VERIFICATION (v0.4.0)
+    # ==============================================
+    
+    def verify_hash_chain(
+        self,
+        workspace_id: str,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        v0.4.0: Verify entire hash chain for a workspace:user stream.
+        
+        Walks through all events in chronological order and verifies:
+        1. Each event's stored hash matches computed hash
+        2. Each event's previous_hash matches predecessor's hash
+        
+        Returns:
+            {
+                'valid': bool,
+                'events_verified': int,
+                'gaps': int,
+                'corrupted': int,
+                'first_event_id': str,
+                'last_event_id': str,
+                'issues': List[Dict]
+            }
+        """
+        # Get all events in chronological order (oldest first)
+        events = self.db.execute("""
+            SELECT * FROM events
+            WHERE workspace_id = ? AND user_id = ?
+            ORDER BY timestamp ASC
+        """, (workspace_id, user_id)).fetchall()
+        
+        if not events:
+            return {
+                'valid': True,
+                'events_verified': 0,
+                'gaps': 0,
+                'corrupted': 0,
+                'first_event_id': None,
+                'last_event_id': None,
+                'issues': []
+            }
+        
+        issues = []
+        gaps = 0
+        corrupted = 0
+        
+        previous_hash = None
+        
+        for i, row in enumerate(events):
+            event = self._row_to_event(row)
+            stored_hash = row['hash'] if 'hash' in row.keys() else None
+            
+            # Check 1: Verify stored hash matches computed hash
+            computed_hash = event.compute_hash()
+            if stored_hash and stored_hash != computed_hash:
+                corrupted += 1
+                issues.append({
+                    'type': 'hash_mismatch',
+                    'event_id': event.event_id,
+                    'position': i,
+                    'stored_hash': stored_hash,
+                    'computed_hash': computed_hash
+                })
+            
+            # Check 2: Verify chain link
+            if i == 0:
+                # First event should have no previous_hash (genesis)
+                if event.previous_hash is not None:
+                    issues.append({
+                        'type': 'genesis_has_previous',
+                        'event_id': event.event_id,
+                        'position': i,
+                        'previous_hash': event.previous_hash
+                    })
+            else:
+                # Subsequent events should link to predecessor
+                if event.previous_hash != previous_hash:
+                    gaps += 1
+                    issues.append({
+                        'type': 'chain_break',
+                        'event_id': event.event_id,
+                        'position': i,
+                        'expected_previous': previous_hash,
+                        'actual_previous': event.previous_hash
+                    })
+            
+            # Update for next iteration
+            previous_hash = computed_hash
+        
+        first_event = self._row_to_event(events[0])
+        last_event = self._row_to_event(events[-1])
+        
+        return {
+            'valid': len(issues) == 0,
+            'events_verified': len(events),
+            'gaps': gaps,
+            'corrupted': corrupted,
+            'first_event_id': first_event.event_id,
+            'last_event_id': last_event.event_id,
+            'issues': issues
+        }
+    
+    # ==============================================
+    # TEMPORAL REPLAY (v0.4.0)
+    # ==============================================
+    
+    def replay_to_timestamp(
+        self,
+        workspace_id: str,
+        user_id: str,
+        timestamp: float,
+    ) -> List[Event]:
+        """
+        v0.4.0: Replay all events up to a given timestamp.
+        
+        Returns events in chronological order (oldest first).
+        This is THE DIFFERENTIATOR - RAG cannot do this.
+        """
+        rows = self.db.execute("""
+            SELECT * FROM events
+            WHERE workspace_id = ? AND user_id = ? AND timestamp <= ?
+            ORDER BY timestamp ASC
+        """, (workspace_id, user_id, timestamp)).fetchall()
+        
+        return [self._row_to_event(row) for row in rows]
+    
+    def get_events_in_range(
+        self,
+        workspace_id: str,
+        user_id: str,
+        start_time: float,
+        end_time: float,
+    ) -> List[Event]:
+        """
+        Get events in a time range, chronological order.
+        """
+        rows = self.db.execute("""
+            SELECT * FROM events
+            WHERE workspace_id = ? AND user_id = ? 
+                AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp ASC
+        """, (workspace_id, user_id, start_time, end_time)).fetchall()
+        
+        return [self._row_to_event(row) for row in rows]
     
     # ==============================================
     # DELETE OPERATIONS (GDPR)
