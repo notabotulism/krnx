@@ -1,0 +1,535 @@
+{
+  "timestamp": "2025-12-05T12:02:16.992048",
+  "system_info": {
+    "python_version": "3.10.12",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "processor": "x86_64",
+    "cpu_count": 4
+  },
+  "config": {
+    "write_counts": [
+      100,
+      1000,
+      10000,
+      50000
+    ],
+    "read_iterations": 1000,
+    "branch_event_counts": [
+      100,
+      1000,
+      10000
+    ],
+    "verify_event_counts": [
+      100,
+      1000,
+      10000,
+      50000
+    ],
+    "search_event_count": 10000,
+    "search_iterations": 100,
+    "concurrent_threads": [
+      2,
+      4,
+      8,
+      16
+    ],
+    "concurrent_events_per_thread": 100,
+    "correctness_event_count": 1000,
+    "soak_duration_sec": 600
+  },
+  "performance": [
+    {
+      "name": "write_throughput",
+      "metric": "events_per_second",
+      "value": 5994.38,
+      "unit": "events/sec",
+      "params": {
+        "event_count": 100,
+        "elapsed_sec": 0.017
+      }
+    },
+    {
+      "name": "write_throughput",
+      "metric": "events_per_second",
+      "value": 4177.57,
+      "unit": "events/sec",
+      "params": {
+        "event_count": 1000,
+        "elapsed_sec": 0.239
+      }
+    },
+    {
+      "name": "write_throughput",
+      "metric": "events_per_second",
+      "value": 3917.07,
+      "unit": "events/sec",
+      "params": {
+        "event_count": 10000,
+        "elapsed_sec": 2.553
+      }
+    },
+    {
+      "name": "write_throughput",
+      "metric": "events_per_second",
+      "value": 3855.6,
+      "unit": "events/sec",
+      "params": {
+        "event_count": 50000,
+        "elapsed_sec": 12.968
+      }
+    },
+    {
+      "name": "read_latency_log",
+      "metric": "p50_ms",
+      "value": 0.878,
+      "unit": "ms",
+      "params": {
+        "iterations": 1000,
+        "limit": 100
+      }
+    },
+    {
+      "name": "read_latency_log",
+      "metric": "p95_ms",
+      "value": 1.091,
+      "unit": "ms",
+      "params": {}
+    },
+    {
+      "name": "read_latency_log",
+      "metric": "p99_ms",
+      "value": 1.425,
+      "unit": "ms",
+      "params": {}
+    },
+    {
+      "name": "read_latency_show",
+      "metric": "p50_ms",
+      "value": 0.022,
+      "unit": "ms",
+      "params": {}
+    },
+    {
+      "name": "read_latency_show",
+      "metric": "p95_ms",
+      "value": 0.041,
+      "unit": "ms",
+      "params": {}
+    },
+    {
+      "name": "read_latency_at",
+      "metric": "p50_ms",
+      "value": 2.828,
+      "unit": "ms",
+      "params": {}
+    },
+    {
+      "name": "read_latency_at",
+      "metric": "p95_ms",
+      "value": 3.533,
+      "unit": "ms",
+      "params": {}
+    },
+    {
+      "name": "branch_creation",
+      "metric": "time_seconds",
+      "value": 0.0003,
+      "unit": "sec",
+      "params": {
+        "event_count": 100
+      }
+    },
+    {
+      "name": "branch_creation",
+      "metric": "time_seconds",
+      "value": 0.0006,
+      "unit": "sec",
+      "params": {
+        "event_count": 1000
+      }
+    },
+    {
+      "name": "branch_creation",
+      "metric": "time_seconds",
+      "value": 0.0008,
+      "unit": "sec",
+      "params": {
+        "event_count": 10000
+      }
+    },
+    {
+      "name": "verify_time",
+      "metric": "time_seconds",
+      "value": 0.0037,
+      "unit": "sec",
+      "params": {
+        "event_count": 100,
+        "events_per_sec": 27035.55
+      }
+    },
+    {
+      "name": "verify_time",
+      "metric": "time_seconds",
+      "value": 0.0239,
+      "unit": "sec",
+      "params": {
+        "event_count": 1000,
+        "events_per_sec": 41790.09
+      }
+    },
+    {
+      "name": "verify_time",
+      "metric": "time_seconds",
+      "value": 0.251,
+      "unit": "sec",
+      "params": {
+        "event_count": 10000,
+        "events_per_sec": 39846.21
+      }
+    },
+    {
+      "name": "verify_time",
+      "metric": "time_seconds",
+      "value": 1.2956,
+      "unit": "sec",
+      "params": {
+        "event_count": 50000,
+        "events_per_sec": 38590.93
+      }
+    },
+    {
+      "name": "search_latency",
+      "metric": "p50_ms",
+      "value": 5.481,
+      "unit": "ms",
+      "params": {
+        "event_count": 10000
+      }
+    },
+    {
+      "name": "search_latency",
+      "metric": "p95_ms",
+      "value": 6.854,
+      "unit": "ms",
+      "params": {}
+    },
+    {
+      "name": "concurrent_writes",
+      "metric": "events_per_second",
+      "value": 3062.36,
+      "unit": "events/sec",
+      "params": {
+        "threads": 2,
+        "events_per_thread": 100,
+        "total_events": 200,
+        "integrity": "PASS"
+      }
+    },
+    {
+      "name": "concurrent_writes",
+      "metric": "events_per_second",
+      "value": 3284.9,
+      "unit": "events/sec",
+      "params": {
+        "threads": 4,
+        "events_per_thread": 100,
+        "total_events": 400,
+        "integrity": "PASS"
+      }
+    },
+    {
+      "name": "concurrent_writes",
+      "metric": "events_per_second",
+      "value": 3052.88,
+      "unit": "events/sec",
+      "params": {
+        "threads": 8,
+        "events_per_thread": 100,
+        "total_events": 800,
+        "integrity": "PASS"
+      }
+    },
+    {
+      "name": "concurrent_writes",
+      "metric": "events_per_second",
+      "value": 2865.93,
+      "unit": "events/sec",
+      "params": {
+        "threads": 16,
+        "events_per_thread": 100,
+        "total_events": 1600,
+        "integrity": "PASS"
+      }
+    },
+    {
+      "name": "disk_usage",
+      "metric": "bytes_per_event",
+      "value": 282.62,
+      "unit": "bytes",
+      "params": {
+        "event_count": 10000,
+        "total_bytes": 2826240
+      }
+    }
+  ],
+  "correctness": [
+    {
+      "name": "hash_chain_integrity",
+      "passed": true,
+      "status": "PASS",
+      "details": "1000 events verified"
+    },
+    {
+      "name": "branch_isolation",
+      "passed": true,
+      "status": "PASS",
+      "details": "main: 2, isolated: 3"
+    },
+    {
+      "name": "concurrent_ordering",
+      "passed": true,
+      "status": "PASS",
+      "details": "400/400 events, chain valid"
+    },
+    {
+      "name": "export_import_fidelity",
+      "passed": true,
+      "status": "PASS",
+      "details": "100 events"
+    },
+    {
+      "name": "timestamp_ordering",
+      "passed": true,
+      "status": "PASS",
+      "details": "at(ts+150): expected {1, 2, 4}, got {1, 2, 4}"
+    },
+    {
+      "name": "verify_detects_corruption",
+      "passed": true,
+      "status": "PASS",
+      "details": "tampered row 5"
+    }
+  ],
+  "security": [
+    {
+      "name": "workspace_isolation",
+      "passed": true,
+      "status": "PASS",
+      "details": "no cross-workspace data access",
+      "category": "security"
+    },
+    {
+      "name": "branch_data_isolation",
+      "passed": true,
+      "status": "PASS",
+      "details": "branches contain only their own data",
+      "category": "security"
+    },
+    {
+      "name": "deleted_branch_not_queryable",
+      "passed": true,
+      "status": "PASS",
+      "details": "deleted branch hidden from normal queries",
+      "category": "security"
+    },
+    {
+      "name": "search_branch_isolation",
+      "passed": true,
+      "status": "PASS",
+      "details": "search respects branch boundaries",
+      "category": "security"
+    },
+    {
+      "name": "sql_injection_content",
+      "passed": true,
+      "status": "PASS",
+      "details": "6 payloads stored safely",
+      "category": "security"
+    },
+    {
+      "name": "sql_injection_search",
+      "passed": true,
+      "status": "PASS",
+      "details": "search handles injection attempts safely",
+      "category": "security"
+    },
+    {
+      "name": "sql_injection_branch_name",
+      "passed": true,
+      "status": "PASS",
+      "details": "branch names sanitized",
+      "category": "security"
+    },
+    {
+      "name": "path_traversal_workspace",
+      "passed": true,
+      "status": "PASS",
+      "details": "workspace confined to storage dir",
+      "category": "security"
+    },
+    {
+      "name": "malformed_json_resilience",
+      "passed": true,
+      "status": "PASS",
+      "details": "7 edge cases handled",
+      "category": "security"
+    },
+    {
+      "name": "unicode_content",
+      "passed": true,
+      "status": "PASS",
+      "details": "8 unicode samples preserved",
+      "category": "security"
+    },
+    {
+      "name": "binary_content",
+      "passed": true,
+      "status": "PASS",
+      "details": "binary data preserved via base64",
+      "category": "security"
+    },
+    {
+      "name": "large_content",
+      "passed": true,
+      "status": "PASS",
+      "details": "1MB content stored and retrieved",
+      "category": "security"
+    },
+    {
+      "name": "hash_cannot_be_forged",
+      "passed": true,
+      "status": "PASS",
+      "details": "content tampering detected",
+      "category": "security"
+    },
+    {
+      "name": "parent_chain_tampering",
+      "passed": true,
+      "status": "PASS",
+      "details": "parent hash tampering detected",
+      "category": "security"
+    },
+    {
+      "name": "replay_attack_detection",
+      "passed": true,
+      "status": "PASS",
+      "details": "event replay/duplication detected",
+      "category": "security"
+    },
+    {
+      "name": "large_event_count",
+      "passed": true,
+      "status": "PASS",
+      "details": "10000 events handled",
+      "category": "security"
+    },
+    {
+      "name": "many_branches",
+      "passed": true,
+      "status": "PASS",
+      "details": "100 branches handled",
+      "category": "security"
+    },
+    {
+      "name": "deep_content_nesting",
+      "passed": true,
+      "status": "PASS",
+      "details": "50 levels nested",
+      "category": "security"
+    }
+  ],
+  "hardening": [
+    {
+      "name": "crash_recovery_mid_write",
+      "passed": true,
+      "status": "PASS",
+      "details": "recovered 100 events, verify=True",
+      "category": "hardening"
+    },
+    {
+      "name": "crash_recovery_mid_batch",
+      "passed": true,
+      "status": "PASS",
+      "details": "rolled back incomplete, 50 events intact",
+      "category": "hardening"
+    },
+    {
+      "name": "recovery_after_wal_checkpoint",
+      "passed": true,
+      "status": "PASS",
+      "details": "1100 events preserved",
+      "category": "hardening"
+    },
+    {
+      "name": "soak_sustained_writes",
+      "passed": true,
+      "status": "PASS",
+      "details": "1,754,000 events in 600s, avg 2,937/sec (min 630, max 3,809), degradation ratio 0.69",
+      "category": "hardening"
+    },
+    {
+      "name": "soak_memory_stability",
+      "passed": true,
+      "status": "PASS",
+      "details": "memory growth: 0.1MB",
+      "category": "hardening"
+    },
+    {
+      "name": "fuzz_event_types",
+      "passed": true,
+      "status": "PASS",
+      "details": "13 accepted, 0 rejected, db intact",
+      "category": "hardening"
+    },
+    {
+      "name": "fuzz_content_structure",
+      "passed": true,
+      "status": "PASS",
+      "details": "100/100 random structures handled",
+      "category": "hardening"
+    },
+    {
+      "name": "fuzz_agent_names",
+      "passed": true,
+      "status": "PASS",
+      "details": "10/10 agents handled",
+      "category": "hardening"
+    },
+    {
+      "name": "fuzz_branch_operations",
+      "passed": true,
+      "status": "PASS",
+      "details": "4 branches intact",
+      "category": "hardening"
+    },
+    {
+      "name": "fuzz_timestamps",
+      "passed": true,
+      "status": "PASS",
+      "details": "6/6 valid timestamps, db intact",
+      "category": "hardening"
+    },
+    {
+      "name": "fuzz_rapid_branch_switching",
+      "passed": true,
+      "status": "PASS",
+      "details": "506 events across 6 branches",
+      "category": "hardening"
+    }
+  ],
+  "summary": {
+    "peak_write_throughput": 5994.38,
+    "read_latency_p50_ms": 0.878,
+    "read_latency_p99_ms": 1.425,
+    "bytes_per_event": 282.62,
+    "correctness_passed": 6,
+    "correctness_total": 6,
+    "correctness_rate": "6/6",
+    "security_passed": 18,
+    "security_total": 18,
+    "security_rate": "18/18",
+    "hardening_passed": 11,
+    "hardening_total": 11,
+    "hardening_rate": "11/11"
+  }
+}
